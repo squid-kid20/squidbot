@@ -30,6 +30,8 @@ class Logs(commands.Cog):
             channel = self.bot.get_channel(int(channel_id))
             if not isinstance(channel, discord.TextChannel):
                 continue
+            if channel.guild != message.guild:
+                continue
 
             # TODO: handle attachments
             embed = discord.Embed(
