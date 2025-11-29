@@ -4,6 +4,7 @@ import discord
 import interface
 import json
 import os
+import pathlib
 from discord.ext import commands
 
 
@@ -52,6 +53,44 @@ class Logs(commands.Cog):
                 f'**\N{WASTEBASKET} MESSAGE DELETED (in {message.channel.mention})**',
                 embed=embed,
             )
+
+            if message.attachments:
+                files = self.get_downloaded_attachments(message)
+                if files:
+                    await channel.send(
+                        f'\N{PAPERCLIP} _Attachments of message {message.id}:_',
+                        files=files,
+                    )
+                else:
+                    await channel.send(
+                        f'\N{PAPERCLIP} _Attachments of message {message.id} could not be found._',
+                    )
+
+    async def download_attachments(self, message: discord.Message) -> None:
+        """Download attachments from a message."""
+        if message.guild is None:
+            return
+        path = f'attachments/{message.guild.id}/{message.channel.id}/{message.id}'
+        os.makedirs(path, exist_ok=True)
+        for attachment in message.attachments:
+            await attachment.save(fp=pathlib.Path(path, f'{attachment.id}-{attachment.filename}'))
+
+    def get_downloaded_attachments(self, message: discord.Message) -> list[discord.File]:
+        files: list[discord.File] = []
+        if message.guild is None:
+            return files
+        path = f'attachments/{message.guild.id}/{message.channel.id}/{message.id}'
+        if not os.path.exists(path):
+            return files
+
+        for filename in os.listdir(path):
+            files.append(
+                discord.File(
+                    fp=pathlib.Path(path, filename),
+                    filename=filename.split('-', 1)[1],
+                ),
+            )
+        return files
 
     def load_log_configs(self):
         """Load log configurations for each channel."""
