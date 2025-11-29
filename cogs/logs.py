@@ -91,6 +91,53 @@ class Logs(commands.Cog):
             )
         return files
 
+    @commands.Cog.listener()
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        if not isinstance(before.channel, discord.abc.GuildChannel):
+            return
+        if before.guild is None:
+            return
+        if str(before.guild.id) not in self.configs:
+            return
+
+        config = self.configs[str(before.guild.id)]
+
+        for channel_id, channel_config in config.items():
+            if not channel_config.get('message_edit', False):
+                continue
+            channel = self.bot.get_channel(int(channel_id))
+            if not isinstance(channel, discord.TextChannel):
+                continue
+            if channel.guild != before.guild:
+                continue
+
+            # FIXME: handle 4000 character limit
+            embed = discord.Embed(
+                colour=self.get_colour(before.author),
+            ).add_field(
+                name='Before (empty)' if not before.content else 'Before',
+                value=before.content or '_No content_',
+                inline=False,
+            ).add_field(
+                name='After (empty)' if not after.content else 'After',
+                value=after.content or '_No content_',
+                inline=False,
+            ).set_author(
+                name=before.author.display_name,
+                icon_url=before.author.display_avatar.url,
+            ).set_footer(
+                text=self.id_tags(
+                    user_id=before.author.id,
+                    message_id=before.id,
+                    channel_id=before.channel.id,
+                ),
+            )
+
+            await channel.send(
+                f'**\N{MEMO} MESSAGE EDITED (in {before.channel.mention})**',
+                embed=embed,
+            )
+
     def load_log_configs(self):
         """Load log configurations for each channel."""
         for filename in os.listdir('logs/'):
