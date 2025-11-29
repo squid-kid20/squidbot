@@ -8,7 +8,7 @@ from discord.ext import commands
 
 
 class Logs(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.configs: dict[str, dict[str, dict[str, bool]]] = {}
         self.load_log_configs()
@@ -27,8 +27,8 @@ class Logs(commands.Cog):
         for channel_id, channel_config in config.items():
             if not channel_config.get('message_delete', False):
                 continue
-            channel: discord.TextChannel = self.bot.get_channel(int(channel_id))
-            if channel is None:
+            channel = self.bot.get_channel(int(channel_id))
+            if not isinstance(channel, discord.TextChannel):
                 continue
 
             # TODO: handle attachments
