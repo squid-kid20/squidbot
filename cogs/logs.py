@@ -34,7 +34,6 @@ class Logs(commands.Cog):
             if channel.guild != message.guild:
                 continue
 
-            # TODO: handle attachments
             embed = discord.Embed(
                 colour=self.get_colour(message.author),
                 description=message.content,
