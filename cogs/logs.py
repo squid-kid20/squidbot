@@ -37,7 +37,7 @@ class Logs(commands.Cog):
             # TODO: handle attachments
             embed = discord.Embed(
                 colour=self.get_colour(message.author),
-                description=message.content, # FIXME: handle 4000 character messages
+                description=message.content,
             ).set_author(
                 name=message.author.display_name,
                 icon_url=message.author.display_avatar.url,
