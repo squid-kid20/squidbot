@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import datetime
 import discord
 import interface
 import json
@@ -47,9 +48,10 @@ class Logs(commands.Cog):
                     channel_id=message.channel.id,
                 ),
             )
+            reltime = self.relative_time(message.created_at)
 
             await channel.send(
-                f'**\N{WASTEBASKET} MESSAGE DELETED (in {message.channel.mention})**',
+                f'**\N{WASTEBASKET} MESSAGE DELETED (sent {reltime} in {message.channel.mention})**',
                 embed=embed,
             )
 
@@ -133,8 +135,9 @@ class Logs(commands.Cog):
                 ),
             )
 
+            reltime = self.relative_time(before.created_at)
             await channel.send(
-                f'**\N{MEMO} MESSAGE EDITED (in {before.channel.mention})**',
+                f'**\N{MEMO} MESSAGE EDITED (sent {reltime} in {before.channel.mention})**',
                 embed=embed,
             )
 
@@ -166,6 +169,31 @@ class Logs(commands.Cog):
         if user.colour == discord.Colour.default():
             return None
         return user.colour
+
+    def relative_time(self, dt: datetime.datetime) -> str:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        delta = now - dt
+        seconds = int(delta.total_seconds())
+
+        if seconds == 0:
+            return 'now'
+
+        if seconds < 60:
+            duration = f'{seconds}s'
+        elif seconds < 60 * 60:
+            minutes = seconds // 60
+            seconds = seconds % 60
+            duration = f'{minutes}m{seconds}s'
+        elif seconds < 60 * 60 * 24:
+            hours = seconds // 3600
+            minutes = (seconds % 3600) // 60
+            duration = f'{hours}h{minutes}m'
+        else:
+            days = seconds // 86400
+            hours = (seconds % 86400) // 3600
+            duration = f'{days}d{hours}h'
+
+        return f'{duration} ago'
 
 
 async def setup(bot):
