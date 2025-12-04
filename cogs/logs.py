@@ -51,7 +51,8 @@ class Logs(commands.Cog):
             reltime = self.relative_time(message.created_at)
 
             await channel.send(
-                f'**\N{WASTEBASKET} MESSAGE DELETED (sent {reltime} in {message.channel.mention})**',
+                f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
+                f'Sent {reltime} by {message.author.mention} in {message.channel.mention}',
                 embed=embed,
             )
 
@@ -137,7 +138,8 @@ class Logs(commands.Cog):
 
             reltime = self.relative_time(before.created_at)
             await channel.send(
-                f'**\N{MEMO} MESSAGE EDITED (sent {reltime} in {before.channel.mention})**',
+                f'**\N{MEMO} MESSAGE EDITED**\n'
+                f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
                 embed=embed,
             )
 

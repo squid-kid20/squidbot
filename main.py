@@ -11,7 +11,12 @@ with open('bot_token.txt', 'r') as file:
 class BotClient(commands.Bot):
     def __init__(self):
         intents = discord.Intents.all()
-        super().__init__(command_prefix='!', intents=intents)
+        allowed_mentions = discord.AllowedMentions.none()
+        super().__init__(
+            command_prefix='!',
+            intents=intents,
+            allowed_mentions=allowed_mentions,
+        )
 
     async def on_ready(self):
         print(f'Logged on as {self.user}.')
@@ -31,8 +36,6 @@ class BotClient(commands.Bot):
                 task.add_done_callback(tasks.discard)
 
         await self.process_commands(message)
-
-intents = discord.Intents.all()
 
 client = BotClient()
 client.run(bot_token)
