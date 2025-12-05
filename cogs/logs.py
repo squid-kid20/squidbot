@@ -68,7 +68,7 @@ class Logs(commands.Cog):
                         f'\N{PAPERCLIP} _Attachments of message {message.id} could not be found._',
                     )
 
-    async def download_attachments(self, message: discord.Message) -> None:
+    async def download_attachments(self, message: discord.Message, /) -> None:
         """Download attachments from a message."""
         if message.guild is None:
             return
@@ -77,7 +77,7 @@ class Logs(commands.Cog):
         for attachment in message.attachments:
             await attachment.save(fp=pathlib.Path(path, f'{attachment.id}-{attachment.filename}'))
 
-    def get_downloaded_attachments(self, message: discord.Message) -> list[discord.File]:
+    def get_downloaded_attachments(self, message: discord.Message, /) -> list[discord.File]:
         files: list[discord.File] = []
         if message.guild is None:
             return files
@@ -167,12 +167,12 @@ class Logs(commands.Cog):
             ids.append(f'\N{TELEVISION}{channel_id}')
         return ' '.join(ids)
 
-    def get_colour(self, user: discord.User | discord.Member) -> discord.Colour | None:
+    def get_colour(self, user: discord.User | discord.Member, /) -> discord.Colour | None:
         if user.colour == discord.Colour.default():
             return None
         return user.colour
 
-    def relative_time(self, dt: datetime.datetime) -> str:
+    def relative_time(self, dt: datetime.datetime, /) -> str:
         now = datetime.datetime.now(datetime.timezone.utc)
         delta = now - dt
         seconds = int(delta.total_seconds())
