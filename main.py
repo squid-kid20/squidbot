@@ -1,8 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
-import asyncio
 import discord
-from cogs.logs import Logs
 from discord.ext import commands
 
 with open('bot_token.txt', 'r') as file:
@@ -26,14 +24,6 @@ class BotClient(commands.Bot):
 
     async def on_message(self, message):
         print(f'Message from {message.author}: {message.content}')
-
-        if message.attachments:
-            logs_cog: Logs = self.get_cog('Logs') # pyright: ignore[reportAssignmentType]
-            if logs_cog:
-                tasks = set()
-                task = asyncio.create_task(logs_cog.download_attachments(message))
-                tasks.add(task)
-                task.add_done_callback(tasks.discard)
 
         await self.process_commands(message)
 

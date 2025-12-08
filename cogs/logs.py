@@ -16,6 +16,11 @@ class Logs(commands.Cog):
         self.load_log_configs()
 
     @commands.Cog.listener()
+    async def on_message(self, message):
+        if message.attachments:
+            await self.download_attachments(message)
+
+    @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
         if not isinstance(message.channel, discord.abc.GuildChannel):
             return
