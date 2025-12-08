@@ -143,6 +143,50 @@ class Logs(commands.Cog):
                 embed=embed,
             )
 
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member):
+        if str(member.guild.id) not in self.configs:
+            return
+
+        config = self.configs[str(member.guild.id)]
+
+        for channel_id, channel_config in config.items():
+            if not channel_config.get('member_join', False):
+                continue
+            channel = self.bot.get_channel(int(channel_id))
+            if not isinstance(channel, discord.TextChannel):
+                continue
+            if channel.guild != member.guild:
+                continue
+
+            embed = discord.Embed(
+                colour=self.id_colour(member.id),
+            ).set_author(
+                name=member.display_name,
+                icon_url=member.display_avatar.url,
+            ).set_thumbnail(
+                url=member.display_avatar.url,
+            ).add_field(
+                name='Account created',
+                value=self.relative_time(member.created_at),
+            ).add_field(
+                name='Server now has',
+                value=f'{member.guild.member_count} members',
+            ).set_footer(
+                text=self.id_tags(user_id=member.id),
+            )
+
+            if member.bot:
+                header = '\N{ROBOT FACE} BOT ADDED TO SERVER'
+            else:
+                header = '\N{WAVING HAND SIGN} MEMBER JOINED'
+
+            await channel.send(
+                f'**{header}**\n'
+                f'{member.mention}',
+                embed=embed,
+            )
+
     def load_log_configs(self):
         """Load log configurations for each channel."""
         for filename in os.listdir('logs/'):
@@ -196,6 +240,14 @@ class Logs(commands.Cog):
             duration = f'{days}d{hours}h'
 
         return f'{duration} ago'
+
+    def id_colour(self, object_id: int, /) -> discord.Colour:
+        """Generate a colour from an ID."""
+        unix_time = int(discord.utils.snowflake_time(object_id).timestamp())
+        r = (unix_time >> 16) & 0xFF
+        g = (unix_time >> 8) & 0xFF
+        b = unix_time & 0xFF
+        return discord.Colour.from_rgb(r, g, b)
 
 
 async def setup(bot):
