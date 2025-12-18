@@ -16,7 +16,7 @@ class Logs(commands.Cog):
         self.load_log_configs()
 
     @commands.Cog.listener()
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         if message.attachments:
             await self.download_attachments(message)
 
@@ -255,5 +255,5 @@ class Logs(commands.Cog):
         return discord.Colour.from_rgb(r, g, b)
 
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(Logs(bot))
