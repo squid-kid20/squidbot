@@ -22,7 +22,7 @@ class BotClient(commands.Bot):
         await self.load_extension('cogs.test')
         await self.load_extension('cogs.logs')
 
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         print(f'Message from {message.author}: {message.content}')
 
         await self.process_commands(message)
