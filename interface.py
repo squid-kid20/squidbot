@@ -7,10 +7,10 @@ so it can be mocked for testing.
 
 from discord.ext import commands
 
-async def send(ctx: commands.Context, content: str) -> None:
+async def send(ctx: commands.Context[commands.Bot], content: str) -> None:
     """Sends a message to the given context with only text content."""
     await ctx.send(content)
 
-async def reply(ctx: commands.Context, content: str) -> None:
+async def reply(ctx: commands.Context[commands.Bot], content: str) -> None:
     """Sends a reply to the given context with only text content."""
     await ctx.send(content, reference=ctx.message)
