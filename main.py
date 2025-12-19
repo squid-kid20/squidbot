@@ -6,6 +6,7 @@ from discord.ext import commands
 with open('bot_token.txt', 'r') as file:
     bot_token = file.readlines()[0].strip()
 
+
 class BotClient(commands.Bot):
     def __init__(self):
         intents = discord.Intents.all()
@@ -14,6 +15,7 @@ class BotClient(commands.Bot):
             command_prefix='!',
             intents=intents,
             allowed_mentions=allowed_mentions,
+            enable_debug_events=True, # needed for on_socket_raw_receive
         )
 
     async def on_ready(self):
@@ -21,6 +23,7 @@ class BotClient(commands.Bot):
 
         await self.load_extension('cogs.test')
         await self.load_extension('cogs.logs')
+        await self.load_extension('cogs.history')
 
     async def on_message(self, message: discord.Message):
         print(f'Message from {message.author}: {message.content}')
