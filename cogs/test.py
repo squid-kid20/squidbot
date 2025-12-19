@@ -5,8 +5,8 @@ from discord.ext import commands
 
 class Test(commands.Cog):
     @commands.command()
-    async def test(self, ctx: commands.Context):
+    async def test(self, ctx: commands.Context[commands.Bot]):
         await interface.reply(ctx, 'test')
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(Test(bot))
