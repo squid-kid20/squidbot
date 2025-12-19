@@ -41,19 +41,19 @@ class Logs(commands.Cog):
                 continue
 
             embed = discord.Embed(
-                colour=self.get_colour(message.author),
+                colour=get_colour(message.author),
                 description=message.content,
             ).set_author(
                 name=message.author.display_name,
                 icon_url=message.author.display_avatar.url,
             ).set_footer(
-                text=self.id_tags(
+                text=id_tags(
                     user_id=message.author.id,
                     message_id=message.id,
                     channel_id=message.channel.id,
                 ),
             )
-            reltime = self.relative_time(message.created_at)
+            reltime = relative_time(message.created_at)
 
             await channel.send(
                 f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
@@ -121,7 +121,7 @@ class Logs(commands.Cog):
 
             # FIXME: handle 4000 character limit
             embed = discord.Embed(
-                colour=self.get_colour(before.author),
+                colour=get_colour(before.author),
             ).add_field(
                 name='Before (empty)' if not before.content else 'Before',
                 value=before.content or '_No content_',
@@ -134,14 +134,14 @@ class Logs(commands.Cog):
                 name=before.author.display_name,
                 icon_url=before.author.display_avatar.url,
             ).set_footer(
-                text=self.id_tags(
+                text=id_tags(
                     user_id=before.author.id,
                     message_id=before.id,
                     channel_id=before.channel.id,
                 ),
             )
 
-            reltime = self.relative_time(before.created_at)
+            reltime = relative_time(before.created_at)
             await channel.send(
                 f'**\N{MEMO} MESSAGE EDITED**\n'
                 f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
@@ -165,7 +165,7 @@ class Logs(commands.Cog):
                 continue
 
             embed = discord.Embed(
-                colour=self.id_colour(member.id),
+                colour=id_colour(member.id),
             ).set_author(
                 name=member.display_name,
                 icon_url=member.display_avatar.url,
@@ -173,12 +173,12 @@ class Logs(commands.Cog):
                 url=member.display_avatar.url,
             ).add_field(
                 name='Account created',
-                value=self.relative_time(member.created_at),
+                value=relative_time(member.created_at),
             ).add_field(
                 name='Server now has',
                 value=f'{member.guild.member_count} members',
             ).set_footer(
-                text=self.id_tags(user_id=member.id),
+                text=id_tags(user_id=member.id),
             )
 
             if member.bot:
@@ -201,58 +201,59 @@ class Logs(commands.Cog):
                     config = json.load(file)
                 self.configs[guild_id] = config
 
-    def id_tags(
-        self, *,
-        user_id: int | None = None,
-        message_id: int | None = None,
-        channel_id: int | None = None,
-    ) -> str:
-        ids = []
-        if user_id is not None:
-            ids.append(f'\N{BUST IN SILHOUETTE}{user_id}')
-        if message_id is not None:
-            ids.append(f'\N{SPEECH BALLOON}{message_id}')
-        if channel_id is not None:
-            ids.append(f'\N{TELEVISION}{channel_id}')
-        return ' '.join(ids)
 
-    def get_colour(self, user: discord.User | discord.Member, /) -> discord.Colour | None:
-        if user.colour == discord.Colour.default():
-            return None
-        return user.colour
+def id_tags(
+    *,
+    user_id: int | None = None,
+    message_id: int | None = None,
+    channel_id: int | None = None,
+) -> str:
+    ids = []
+    if user_id is not None:
+        ids.append(f'\N{BUST IN SILHOUETTE}{user_id}')
+    if message_id is not None:
+        ids.append(f'\N{SPEECH BALLOON}{message_id}')
+    if channel_id is not None:
+        ids.append(f'\N{TELEVISION}{channel_id}')
+    return ' '.join(ids)
 
-    def relative_time(self, dt: datetime.datetime, /) -> str:
-        now = datetime.datetime.now(datetime.timezone.utc)
-        delta = now - dt
-        seconds = int(delta.total_seconds())
+def get_colour(user: discord.User | discord.Member, /) -> discord.Colour | None:
+    if user.colour == discord.Colour.default():
+        return None
+    return user.colour
 
-        if seconds == 0:
-            return 'now'
+def relative_time(dt: datetime.datetime, /) -> str:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    delta = now - dt
+    seconds = int(delta.total_seconds())
 
-        if seconds < 60:
-            duration = f'{seconds}s'
-        elif seconds < 60 * 60:
-            minutes = seconds // 60
-            seconds = seconds % 60
-            duration = f'{minutes}m{seconds}s'
-        elif seconds < 60 * 60 * 24:
-            hours = seconds // 3600
-            minutes = (seconds % 3600) // 60
-            duration = f'{hours}h{minutes}m'
-        else:
-            days = seconds // 86400
-            hours = (seconds % 86400) // 3600
-            duration = f'{days}d{hours}h'
+    if seconds == 0:
+        return 'now'
 
-        return f'{duration} ago'
+    if seconds < 60:
+        duration = f'{seconds}s'
+    elif seconds < 60 * 60:
+        minutes = seconds // 60
+        seconds = seconds % 60
+        duration = f'{minutes}m{seconds}s'
+    elif seconds < 60 * 60 * 24:
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        duration = f'{hours}h{minutes}m'
+    else:
+        days = seconds // 86400
+        hours = (seconds % 86400) // 3600
+        duration = f'{days}d{hours}h'
 
-    def id_colour(self, object_id: int, /) -> discord.Colour:
-        """Generate a colour from an ID."""
-        unix_time = int(discord.utils.snowflake_time(object_id).timestamp())
-        r = (unix_time >> 16) & 0xFF
-        g = (unix_time >> 8) & 0xFF
-        b = unix_time & 0xFF
-        return discord.Colour.from_rgb(r, g, b)
+    return f'{duration} ago'
+
+def id_colour(object_id: int, /) -> discord.Colour:
+    """Generate a colour from an ID."""
+    unix_time = int(discord.utils.snowflake_time(object_id).timestamp())
+    r = (unix_time >> 16) & 0xFF
+    g = (unix_time >> 8) & 0xFF
+    b = unix_time & 0xFF
+    return discord.Colour.from_rgb(r, g, b)
 
 
 async def setup(bot: commands.Bot):
