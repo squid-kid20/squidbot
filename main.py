@@ -18,6 +18,17 @@ class BotClient(commands.Bot):
             enable_debug_events=True, # needed for on_socket_raw_receive
         )
 
+        original_create_message = self._connection.create_message
+        def interdicted_create_message(self, *, channel, data):
+            """Intercept the create_message function internally used in discord.py.
+
+            create_message gets called when a message is fetched by us or when
+            we send a message.
+            """
+            # TODO: add to history database
+            return original_create_message.__get__(self)(channel=channel, data=data)
+        self._connection.create_message = interdicted_create_message.__get__(self._connection)
+
     async def on_ready(self):
         print(f'Logged on as {self.user}.')
 
