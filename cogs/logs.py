@@ -230,6 +230,11 @@ def relative_time(dt: datetime.datetime, /) -> str:
     if seconds == 0:
         return 'now'
 
+    if seconds < 0:
+        # This can happen and it's likely due to one or both clocks being wrong.
+        # Precision doesn't matter so avoid returning a "-1s ago" or similar.
+        return 'now'
+
     if seconds < 60:
         duration = f'{seconds}s'
     elif seconds < 60 * 60:
