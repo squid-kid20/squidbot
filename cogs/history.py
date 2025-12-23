@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import discord
 import json
 import os
 import sqlite3
@@ -91,6 +92,24 @@ class History(commands.Cog):
         if old_content != content:
             self.add_new_message(data, version + 1)
 
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
+        cursor = self.connection.execute("""
+                SELECT MAX("version")
+                FROM "messages"
+                WHERE "message_id" = ?
+            """,
+            (payload.message_id,),
+        )
+
+        row: tuple[Optional[int]] = cursor.fetchone()
+        version, = row
+
+        version = version or 0
+        version += 1
+
+        data: dict[str, Any] = payload.data # type: ignore # docs say it's a dict
+        self.add_new_message(data, version)
 
 async def setup(bot: BotClient):
     await bot.add_cog(History(bot))
