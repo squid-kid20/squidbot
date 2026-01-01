@@ -23,7 +23,7 @@ class History(commands.Cog):
                     "author_id" INTEGER NOT NULL,
                     "version" INTEGER NOT NULL DEFAULT 0,
                     "content" TEXT,
-                    "json" TEXT,
+                    "json" TEXT NOT NULL,
                     PRIMARY KEY ("message_id", "version")
                 );
             """,
