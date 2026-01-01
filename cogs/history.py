@@ -51,7 +51,7 @@ class History(commands.Cog):
         channel_id: int = data['channel_id']
         author_id: int = data['author']['id']
         content: str = data['content']
-        raw_json: str = json.dumps(data, sort_keys=True)
+        raw_json: str = json.dumps(data)
 
         self.connection.execute("""
                 INSERT INTO "messages"
