@@ -140,7 +140,7 @@ class Logs(commands.Cog):
             author = None
 
         embed = discord.Embed(
-            colour=get_colour(author) if author else discord.Colour.default(),
+            colour=get_colour(author) if author else None,
             description=content,
         )
 
