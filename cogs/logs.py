@@ -270,15 +270,31 @@ class Logs(commands.Cog):
                     descriptions=descriptions,
                 )
 
+                embed = discord.Embed(
+                    description=before.content,
+                    colour=get_colour(before.author),
+                ).set_author(
+                    name=before.author.display_name,
+                    icon_url=before.author.display_avatar.url,
+                ).set_footer(
+                    text=id_tags(
+                        user_id=before.author.id,
+                        message_id=before.id,
+                        channel_id=before.channel.id,
+                    ),
+                )
+
+                reltime = relative_time(before.created_at)
+                text = [
+                    '**\N{MEMO} MESSAGE ATTACHMENTS REMOVED**',
+                    f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
+                ]
                 if files:
-                    await log_channel.send(
-                        f'\N{PAPERCLIP} _Removed attachments of message {before.id}:_',
-                        files=files,
-                    )
+                    text.append(f'\N{PAPERCLIP} _Removed attachments are attached._')
+                    await log_channel.send('\n'.join(text), embed=embed, files=files)
                 else:
-                    await log_channel.send(
-                        f'\N{PAPERCLIP} _Removed attachments of message {before.id} could not be found._',
-                    )
+                    text.append(f'\N{PAPERCLIP} _Removed attachments could not be found._')
+                    await log_channel.send('\n'.join(text), embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
