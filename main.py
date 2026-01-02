@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
 import discord
+import inspect
 from discord.ext import commands
 from typing import Any, Callable
 
@@ -23,10 +24,18 @@ class BotClient(commands.Bot):
             """Intercept the create_message function internally used in discord.py.
 
             create_message gets called when a message is fetched by us or when
-            we send a message.
+            we send a message. But we make sure our hooks don't run when
+            the call is the result of us sending a message.
             """
-            for hook in self._create_message_hooks:
-                hook(data)
+            stack = inspect.stack()
+            caller = stack[1]
+            # https://github.com/Rapptz/discord.py/blob/master/discord/abc.py
+            is_send = caller.function == 'send' and caller.filename.endswith('abc.py')
+
+            if not is_send:
+                for hook in self._create_message_hooks:
+                    hook(data)
+
             return original_create_message.__get__(self2)(channel=channel, data=data)
         self._connection.create_message = interdicted_create_message.__get__(self._connection)
 
