@@ -253,7 +253,7 @@ class Logs(commands.Cog):
                 reltime = relative_time(before.created_at)
                 await log_channel.send(
                     f'**\N{MEMO} MESSAGE EDITED**\n'
-                    f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
+                    f'Sent {reltime} by {before.author.mention} at {before.jump_url}',
                     embed=embed,
                 )
 
@@ -287,7 +287,7 @@ class Logs(commands.Cog):
                 reltime = relative_time(before.created_at)
                 text = [
                     '**\N{MEMO} MESSAGE ATTACHMENTS REMOVED**',
-                    f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
+                    f'Sent {reltime} by {before.author.mention} at {before.jump_url}',
                 ]
                 if files:
                     text.append(f'\N{PAPERCLIP} _Removed attachments are attached._')
