@@ -6,7 +6,7 @@ import os
 import sqlite3
 from discord.ext import commands
 from main import BotClient
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Optional
 
 
 class History(commands.Cog):
