@@ -227,34 +227,35 @@ class Logs(commands.Cog):
             if log_channel.guild != before.guild:
                 continue
 
-            # FIXME: handle 4000 character limit
-            embed = discord.Embed(
-                colour=get_colour(before.author),
-            ).add_field(
-                name='Before (empty)' if not before.content else 'Before',
-                value=before.content or '_No content_',
-                inline=False,
-            ).add_field(
-                name='After (empty)' if not after.content else 'After',
-                value=after.content or '_No content_',
-                inline=False,
-            ).set_author(
-                name=before.author.display_name,
-                icon_url=before.author.display_avatar.url,
-            ).set_footer(
-                text=id_tags(
-                    user_id=before.author.id,
-                    message_id=before.id,
-                    channel_id=before.channel.id,
-                ),
-            )
+            if before.content != after.content:
+                # FIXME: handle 4000 character limit
+                embed = discord.Embed(
+                    colour=get_colour(before.author),
+                ).add_field(
+                    name='Before (empty)' if not before.content else 'Before',
+                    value=before.content or '_No content_',
+                    inline=False,
+                ).add_field(
+                    name='After (empty)' if not after.content else 'After',
+                    value=after.content or '_No content_',
+                    inline=False,
+                ).set_author(
+                    name=before.author.display_name,
+                    icon_url=before.author.display_avatar.url,
+                ).set_footer(
+                    text=id_tags(
+                        user_id=before.author.id,
+                        message_id=before.id,
+                        channel_id=before.channel.id,
+                    ),
+                )
 
-            reltime = relative_time(before.created_at)
-            await log_channel.send(
-                f'**\N{MEMO} MESSAGE EDITED**\n'
-                f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
-                embed=embed,
-            )
+                reltime = relative_time(before.created_at)
+                await log_channel.send(
+                    f'**\N{MEMO} MESSAGE EDITED**\n'
+                    f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
+                    embed=embed,
+                )
 
             if before.attachments and before.attachments != after.attachments:
                 ids: list[int] = [attachment.id for attachment in before.attachments if attachment not in after.attachments]
