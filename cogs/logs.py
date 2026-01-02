@@ -257,8 +257,8 @@ class Logs(commands.Cog):
                     embed=embed,
                 )
 
-            if before.attachments and before.attachments != after.attachments:
-                ids: list[int] = [attachment.id for attachment in before.attachments if attachment not in after.attachments]
+            removed_attachment_ids = [attachment.id for attachment in before.attachments if attachment not in after.attachments]
+            if removed_attachment_ids:
                 history: History = self.bot.get_cog('History') # type: ignore
                 assert(history)
 
@@ -266,7 +266,7 @@ class Logs(commands.Cog):
 
                 files = history.get_downloaded_attachments(
                     before.guild.id, before.channel.id, before.id,
-                    attachment_ids=ids,
+                    attachment_ids=removed_attachment_ids,
                     descriptions=descriptions,
                 )
 
