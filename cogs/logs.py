@@ -31,15 +31,15 @@ class Logs(commands.Cog):
         if str(message.guild.id) not in self.configs:
             return
 
-        config = self.configs[str(message.guild.id)]
+        guild_config = self.configs[str(message.guild.id)]
 
-        for channel_id, channel_config in config.items():
-            if not channel_config.get('message_delete', False):
+        for log_channel_id, log_channel_config in guild_config.items():
+            if not log_channel_config.get('message_delete', False):
                 continue
-            channel = self.bot.get_channel(int(channel_id))
-            if not isinstance(channel, discord.TextChannel):
+            log_channel = self.bot.get_channel(int(log_channel_id))
+            if not isinstance(log_channel, discord.TextChannel):
                 continue
-            if channel.guild != message.guild:
+            if log_channel.guild != message.guild:
                 continue
 
             embed = discord.Embed(
@@ -57,7 +57,7 @@ class Logs(commands.Cog):
             )
             reltime = relative_time(message.created_at)
 
-            await channel.send(
+            await log_channel.send(
                 f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
                 f'Sent {reltime} by {message.author.mention} in {message.channel.mention}',
                 embed=embed,
@@ -66,12 +66,12 @@ class Logs(commands.Cog):
             if message.attachments:
                 files = self.get_downloaded_attachments(message)
                 if files:
-                    await channel.send(
+                    await log_channel.send(
                         f'\N{PAPERCLIP} _Attachments of message {message.id}:_',
                         files=files,
                     )
                 else:
-                    await channel.send(
+                    await log_channel.send(
                         f'\N{PAPERCLIP} _Attachments of message {message.id} could not be found._',
                     )
 
@@ -88,12 +88,12 @@ class Logs(commands.Cog):
         if str(payload.guild_id) not in self.configs:
             return
 
-        config = self.configs[str(payload.guild_id)]
+        guild_config = self.configs[str(payload.guild_id)]
 
-        for channel_id, channel_config in config.items():
-            if not channel_config.get('message_delete', False):
+        for log_channel_id, log_channel_config in guild_config.items():
+            if not log_channel_config.get('message_delete', False):
                 continue
-            channel = self.bot.get_channel(int(channel_id))
+            channel = self.bot.get_channel(int(log_channel_id))
             if not isinstance(channel, discord.TextChannel):
                 continue
             if channel.guild.id != payload.guild_id:
@@ -206,15 +206,15 @@ class Logs(commands.Cog):
         if str(before.guild.id) not in self.configs:
             return
 
-        config = self.configs[str(before.guild.id)]
+        guild_config = self.configs[str(before.guild.id)]
 
-        for channel_id, channel_config in config.items():
-            if not channel_config.get('message_edit', False):
+        for log_channel_id, log_channel_config in guild_config.items():
+            if not log_channel_config.get('message_edit', False):
                 continue
-            channel = self.bot.get_channel(int(channel_id))
-            if not isinstance(channel, discord.TextChannel):
+            log_channel = self.bot.get_channel(int(log_channel_id))
+            if not isinstance(log_channel, discord.TextChannel):
                 continue
-            if channel.guild != before.guild:
+            if log_channel.guild != before.guild:
                 continue
 
             # FIXME: handle 4000 character limit
@@ -240,7 +240,7 @@ class Logs(commands.Cog):
             )
 
             reltime = relative_time(before.created_at)
-            await channel.send(
+            await log_channel.send(
                 f'**\N{MEMO} MESSAGE EDITED**\n'
                 f'Sent {reltime} by {before.author.mention} in {before.channel.mention}',
                 embed=embed,
@@ -251,15 +251,15 @@ class Logs(commands.Cog):
         if str(member.guild.id) not in self.configs:
             return
 
-        config = self.configs[str(member.guild.id)]
+        guild_config = self.configs[str(member.guild.id)]
 
-        for channel_id, channel_config in config.items():
-            if not channel_config.get('member_join', False):
+        for log_channel_id, log_channel_config in guild_config.items():
+            if not log_channel_config.get('member_join', False):
                 continue
-            channel = self.bot.get_channel(int(channel_id))
-            if not isinstance(channel, discord.TextChannel):
+            log_channel = self.bot.get_channel(int(log_channel_id))
+            if not isinstance(log_channel, discord.TextChannel):
                 continue
-            if channel.guild != member.guild:
+            if log_channel.guild != member.guild:
                 continue
 
             embed = discord.Embed(
@@ -284,7 +284,7 @@ class Logs(commands.Cog):
             else:
                 header = '\N{WAVING HAND SIGN} MEMBER JOINED'
 
-            await channel.send(
+            await log_channel.send(
                 f'**{header}**\n'
                 f'{member.mention}',
                 embed=embed,
