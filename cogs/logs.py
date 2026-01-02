@@ -228,18 +228,25 @@ class Logs(commands.Cog):
                 continue
 
             if before.content != after.content:
-                # FIXME: handle 4000 character limit
                 embed = discord.Embed(
                     colour=get_colour(before.author),
-                ).add_field(
-                    name='Before (empty)' if not before.content else 'Before',
-                    value=before.content or '_No content_',
-                    inline=False,
-                ).add_field(
-                    name='After (empty)' if not after.content else 'After',
-                    value=after.content or '_No content_',
-                    inline=False,
-                ).set_author(
+                )
+
+                if len(before.content) <= 1024 and len(after.content) <= 1024:
+                    embed.add_field(
+                        name='Before (empty)' if not before.content else 'Before',
+                        value=before.content or '_No content_',
+                        inline=False,
+                    ).add_field(
+                        name='After (empty)' if not after.content else 'After',
+                        value=after.content or '_No content_',
+                        inline=False,
+                    )
+                else:
+                    embed.title = 'Before (empty)' if not before.content else 'Before'
+                    embed.description = before.content
+
+                embed.set_author(
                     name=before.author.display_name,
                     icon_url=before.author.display_avatar.url,
                 ).set_footer(
