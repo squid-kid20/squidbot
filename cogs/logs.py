@@ -18,11 +18,6 @@ class Logs(commands.Cog):
         self.load_log_configs()
 
     @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if message.attachments:
-            await self.download_attachments(message)
-
-    @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
         if not isinstance(message.channel, discord.abc.GuildChannel):
             return
@@ -64,7 +59,18 @@ class Logs(commands.Cog):
             )
 
             if message.attachments:
-                files = self.get_downloaded_attachments(message)
+                ids = [attachment.id for attachment in message.attachments]
+                history: History = self.bot.get_cog('History') # type: ignore
+                assert(history)
+
+                descriptions = {attachment.id: attachment.description for attachment in message.attachments if attachment.description}
+
+                files = history.get_downloaded_attachments(
+                    message.guild.id, message.channel.id, message.id,
+                    attachment_ids=ids,
+                    descriptions=descriptions,
+                )
+
                 if files:
                     await log_channel.send(
                         f'\N{PAPERCLIP} _Attachments of message {message.id}:_',
@@ -106,7 +112,7 @@ class Logs(commands.Cog):
             if data is None:
                 await self._log_uncached_message_delete(log_channel, payload)
             else:
-                await self._log_historical_message_delete(log_channel, data)
+                await self._log_historical_message_delete(log_channel, payload, data)
 
     async def _log_uncached_message_delete(self, log_channel: discord.TextChannel, payload: discord.RawMessageDeleteEvent, /) -> None:
         embed = discord.Embed(
@@ -126,12 +132,21 @@ class Logs(commands.Cog):
             embed=embed,
         )
 
-    async def _log_historical_message_delete(self, log_channel: discord.TextChannel, data: dict[str, Any], /) -> None:
-        message_id: int = data['id']
-        channel_id: int = data['channel_id']
-        author_id: int = data['author']['id']
+        # I don't think it's possible that we have the attachments of a message even though it's uncached, but just in case
+        history: History = self.bot.get_cog('History') # type: ignore
+        assert(history)
+        files = history.get_downloaded_attachments(payload.guild_id or 0, payload.channel_id, payload.message_id)
+        if files:
+            await log_channel.send(
+                f'\N{PAPERCLIP} _Attachments of message {payload.message_id}:_',
+                files=files,
+            )
+
+    async def _log_historical_message_delete(self, log_channel: discord.TextChannel, payload: discord.RawMessageDeleteEvent, data: dict[str, Any], /) -> None:
+        author_id: int = int(data['author']['id'])
         content: str = data['content']
         timestamp: str = data['timestamp']
+        attachments: list[dict[str, Any]] = data['attachments']
         try:
             author = (log_channel.guild.get_member(author_id)
                 or self.bot.get_user(author_id)
@@ -157,45 +172,40 @@ class Logs(commands.Cog):
         embed.set_footer(
             text=id_tags(
                 user_id=author_id,
-                message_id=message_id,
-                channel_id=channel_id,
+                message_id=payload.message_id,
+                channel_id=payload.channel_id,
             ),
         )
         reltime = relative_time(discord.utils.parse_time(timestamp))
 
         await log_channel.send(
             f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
-            f'Sent {reltime} by <@{author_id}> in <#{channel_id}>',
+            f'Sent {reltime} by <@{author_id}> in <#{payload.channel_id}>',
             embed=embed,
         )
 
-        # TODO: handle attachments
+        if attachments:
+            ids: list[int] = [int(attachment['id']) for attachment in attachments]
+            history: History = self.bot.get_cog('History') # type: ignore
+            assert(history)
 
-    async def download_attachments(self, message: discord.Message, /) -> None:
-        """Download attachments from a message."""
-        if message.guild is None:
-            return
-        path = f'attachments/{message.guild.id}/{message.channel.id}/{message.id}'
-        os.makedirs(path, exist_ok=True)
-        for attachment in message.attachments:
-            await attachment.save(fp=pathlib.Path(path, f'{attachment.id}-{attachment.filename}'))
+            descriptions: dict[int, str] = {int(attachment['id']): attachment['description'] for attachment in attachments if 'description' in attachment}
 
-    def get_downloaded_attachments(self, message: discord.Message, /) -> list[discord.File]:
-        files: list[discord.File] = []
-        if message.guild is None:
-            return files
-        path = f'attachments/{message.guild.id}/{message.channel.id}/{message.id}'
-        if not os.path.exists(path):
-            return files
-
-        for filename in os.listdir(path):
-            files.append(
-                discord.File(
-                    fp=pathlib.Path(path, filename),
-                    filename=filename.split('-', 1)[1],
-                ),
+            files = history.get_downloaded_attachments(
+                payload.guild_id or 0, payload.channel_id, payload.message_id,
+                attachment_ids=ids,
+                descriptions=descriptions,
             )
-        return files
+
+            if files:
+                await log_channel.send(
+                    f'\N{PAPERCLIP} _Attachments of message {payload.message_id}:_',
+                    files=files,
+                )
+            else:
+                await log_channel.send(
+                    f'\N{PAPERCLIP} _Attachments of message {payload.message_id} could not be found._',
+                )
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):

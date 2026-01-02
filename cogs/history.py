@@ -3,6 +3,7 @@
 import discord
 import json
 import os
+import pathlib
 import sqlite3
 from discord.ext import commands
 from main import BotClient
@@ -23,6 +24,7 @@ class History(commands.Cog):
                     "author_id" INTEGER NOT NULL,
                     "version" INTEGER NOT NULL DEFAULT 0,
                     "content" TEXT NOT NULL,
+                    "attachments" TEXT NOT NULL,
                     "json" TEXT NOT NULL,
                     PRIMARY KEY ("message_id", "version")
                 );
@@ -51,15 +53,16 @@ class History(commands.Cog):
         channel_id: int = data['channel_id']
         author_id: int = data['author']['id']
         content: str = data['content']
+        attachments: str = json.dumps(data['attachments'])
         raw_json: str = json.dumps(data)
 
         self._connection.execute("""
                 INSERT INTO "messages"
-                (message_id, channel_id, author_id, version, content, json)
+                (message_id, channel_id, author_id, version, content, attachments, json)
                 VALUES
-                (?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?)
             """,
-            (message_id, channel_id, author_id, version, content, raw_json),
+            (message_id, channel_id, author_id, version, content, attachments, raw_json),
         )
         self._connection.commit()
 
@@ -74,22 +77,22 @@ class History(commands.Cog):
         content: str = data['content']
 
         cursor = self._connection.execute("""
-                SELECT MAX("version"), "content"
+                SELECT MAX("version"), "content", "attachments"
                 FROM "messages"
                 WHERE "message_id" = ?
             """,
             (message_id,),
         )
 
-        row: tuple[Optional[int], Optional[str]] = cursor.fetchone()
-        version, old_content = row
-        if version is None:
+        row: tuple[Optional[int], Optional[str], Optional[str]] = cursor.fetchone()
+        version, old_content, old_attachments = row
+        if version is None or old_content is None or old_attachments is None:
             # Message does not exist, add it
             self._add_new_message(data)
             return
 
-        # Message exists, check if content has changed
-        if old_content != content:
+        # Message exists, check if anything has changed
+        if old_content != content or json.loads(old_attachments) != data['attachments']:
             self._add_new_message(data, version + 1)
 
     def get_message(self, message_id: int, /) -> dict[str, Any] | None:
@@ -112,6 +115,73 @@ class History(commands.Cog):
         return data
 
     @commands.Cog.listener()
+    async def on_message(self, message: discord.Message) -> None:
+        if message.attachments:
+            await self._download_attachments(message)
+
+    async def _download_attachments(self, message: discord.Message, /) -> None:
+        if message.guild is None:
+            return
+
+        downloaded_ids = self._get_downloaded_attachment_ids(message.guild.id, message.channel.id, message.id)
+        path = f'media/{message.guild.id}/{message.channel.id}/{message.id}/'
+        os.makedirs(path, exist_ok=True)
+
+        for attachment in message.attachments:
+            if attachment.id in downloaded_ids:
+                continue
+
+            filename = f'a{attachment.id}-{attachment.filename}'
+            filepath = pathlib.Path(path, filename)
+
+            await attachment.save(filepath)
+
+    def _get_downloaded_attachment_ids(self, guild_id: int, channel_id: int, message_id: int, /) -> list[int]:
+        path = f'media/{guild_id}/{channel_id}/{message_id}/'
+        if not os.path.exists(path):
+            return []
+
+        ids: list[int] = []
+
+        for filename in os.listdir(path):
+            if filename.startswith('a'):
+                filename = filename[1:]
+                filename = filename.split('-', 1)[0]
+                attachment_id = int(filename)
+                ids.append(attachment_id)
+
+        return ids
+
+    def get_downloaded_attachments(
+        self, guild_id: int, channel_id: int, message_id: int, /,
+        *, attachment_ids: list[int] | None = None,
+        descriptions: dict[int, str] | None = None,
+    ) -> list[discord.File]:
+        """Get the downloaded attachments for a message.
+        If attachment_ids is specified, only attachments returned are those with IDs in attachment_ids.
+        If an ID has a description in descriptions, the corresponding File will also have that description.
+        """
+
+        path = f'media/{guild_id}/{channel_id}/{message_id}/'
+        if not os.path.exists(path):
+            return []
+
+        files: list[discord.File] = []
+        descriptions = descriptions or {}
+
+        for filename in os.listdir(path):
+            if filename.startswith('a'):
+                attachment_id = int(filename[1:].split('-', 1)[0])
+                if attachment_ids is not None and attachment_id not in attachment_ids:
+                    continue
+
+                filepath = pathlib.Path(path, filename)
+                filename = filename.split('-', 1)[1]
+                files.append(discord.File(filepath, filename, description=descriptions.get(attachment_id)))
+
+        return files
+
+    @commands.Cog.listener()
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
         cursor = self._connection.execute("""
                 SELECT MAX("version")
@@ -129,6 +199,8 @@ class History(commands.Cog):
 
         data: dict[str, Any] = payload.data # type: ignore # docs say it's a dict
         self._add_new_message(data, version)
+
+        await self._download_attachments(payload.message)
 
 async def setup(bot: BotClient):
     await bot.add_cog(History(bot))
