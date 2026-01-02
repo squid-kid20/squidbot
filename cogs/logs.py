@@ -256,6 +256,29 @@ class Logs(commands.Cog):
                 embed=embed,
             )
 
+            if before.attachments and before.attachments != after.attachments:
+                ids: list[int] = [attachment.id for attachment in before.attachments if attachment not in after.attachments]
+                history: History = self.bot.get_cog('History') # type: ignore
+                assert(history)
+
+                descriptions = {attachment.id: attachment.description for attachment in before.attachments if attachment.description}
+
+                files = history.get_downloaded_attachments(
+                    before.guild.id, before.channel.id, before.id,
+                    attachment_ids=ids,
+                    descriptions=descriptions,
+                )
+
+                if files:
+                    await log_channel.send(
+                        f'\N{PAPERCLIP} _Removed attachments of message {before.id}:_',
+                        files=files,
+                    )
+                else:
+                    await log_channel.send(
+                        f'\N{PAPERCLIP} _Removed attachments of message {before.id} could not be found._',
+                    )
+
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         if str(member.guild.id) not in self.configs:
