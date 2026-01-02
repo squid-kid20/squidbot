@@ -13,10 +13,10 @@ class History(commands.Cog):
     def __init__(self, bot: BotClient):
         self.bot = bot
         os.makedirs('databases', exist_ok=True)
-        self.connection = sqlite3.connect('databases/history.sqlite', autocommit=False)
+        self._connection = sqlite3.connect('databases/history.sqlite', autocommit=False)
 
-        self.connection.execute('PRAGMA foreign_keys = true;')
-        self.connection.execute("""
+        self._connection.execute('PRAGMA foreign_keys = true;')
+        self._connection.execute("""
                 CREATE TABLE IF NOT EXISTS "messages" (
                     "message_id" INTEGER NOT NULL,
                     "channel_id" INTEGER NOT NULL,
@@ -28,9 +28,9 @@ class History(commands.Cog):
                 );
             """,
         )
-        self.connection.commit()
+        self._connection.commit()
 
-        self.bot.register_create_message_hook(self.update_message)
+        self.bot.register_create_message_hook(self._update_message)
 
     @commands.Cog.listener()
     async def on_socket_raw_receive(self, msg: str):
@@ -44,16 +44,16 @@ class History(commands.Cog):
 
         payload: dict[str, Any] = json.loads(msg)
         if payload['t'] == 'MESSAGE_CREATE':
-            self.add_new_message(payload['d'])
+            self._add_new_message(payload['d'])
 
-    def add_new_message(self, data: dict[str, Any], version = 0, /) -> None:
+    def _add_new_message(self, data: dict[str, Any], version = 0, /) -> None:
         message_id: int = data['id']
         channel_id: int = data['channel_id']
         author_id: int = data['author']['id']
         content: str = data['content']
         raw_json: str = json.dumps(data)
 
-        self.connection.execute("""
+        self._connection.execute("""
                 INSERT INTO "messages"
                 (message_id, channel_id, author_id, version, content, json)
                 VALUES
@@ -61,9 +61,9 @@ class History(commands.Cog):
             """,
             (message_id, channel_id, author_id, version, content, raw_json),
         )
-        self.connection.commit()
+        self._connection.commit()
 
-    def update_message(self, data: dict[str, Any], /) -> None:
+    def _update_message(self, data: dict[str, Any], /) -> None:
         """Add the message to the database by the following logic:
         If the message already exists, check if the content has changed.
         If it hasn't, do nothing.
@@ -73,7 +73,7 @@ class History(commands.Cog):
         message_id: int = data['id']
         content: str = data['content']
 
-        cursor = self.connection.execute("""
+        cursor = self._connection.execute("""
                 SELECT MAX("version"), "content"
                 FROM "messages"
                 WHERE "message_id" = ?
@@ -85,16 +85,16 @@ class History(commands.Cog):
         version, old_content = row
         if version is None:
             # Message does not exist, add it
-            self.add_new_message(data)
+            self._add_new_message(data)
             return
 
         # Message exists, check if content has changed
         if old_content != content:
-            self.add_new_message(data, version + 1)
+            self._add_new_message(data, version + 1)
 
     @commands.Cog.listener()
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
-        cursor = self.connection.execute("""
+        cursor = self._connection.execute("""
                 SELECT MAX("version")
                 FROM "messages"
                 WHERE "message_id" = ?
@@ -109,7 +109,7 @@ class History(commands.Cog):
         version += 1
 
         data: dict[str, Any] = payload.data # type: ignore # docs say it's a dict
-        self.add_new_message(data, version)
+        self._add_new_message(data, version)
 
 async def setup(bot: BotClient):
     await bot.add_cog(History(bot))
