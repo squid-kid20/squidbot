@@ -22,7 +22,7 @@ class History(commands.Cog):
                     "channel_id" INTEGER NOT NULL,
                     "author_id" INTEGER NOT NULL,
                     "version" INTEGER NOT NULL DEFAULT 0,
-                    "content" TEXT,
+                    "content" TEXT NOT NULL,
                     "json" TEXT NOT NULL,
                     PRIMARY KEY ("message_id", "version")
                 );
