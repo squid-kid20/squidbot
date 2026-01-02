@@ -93,10 +93,10 @@ class Logs(commands.Cog):
         for log_channel_id, log_channel_config in guild_config.items():
             if not log_channel_config.get('message_delete', False):
                 continue
-            channel = self.bot.get_channel(int(log_channel_id))
-            if not isinstance(channel, discord.TextChannel):
+            log_channel = self.bot.get_channel(int(log_channel_id))
+            if not isinstance(log_channel, discord.TextChannel):
                 continue
-            if channel.guild.id != payload.guild_id:
+            if log_channel.guild.id != payload.guild_id:
                 continue
 
             history: History = self.bot.get_cog('History') # type: ignore
@@ -104,9 +104,9 @@ class Logs(commands.Cog):
 
             data = history.get_message(payload.message_id)
             if data is None:
-                await self._log_uncached_message_delete(channel, payload)
+                await self._log_uncached_message_delete(log_channel, payload)
             else:
-                await self._log_historical_message_delete(channel, data)
+                await self._log_historical_message_delete(log_channel, data)
 
     async def _log_uncached_message_delete(self, log_channel: discord.TextChannel, payload: discord.RawMessageDeleteEvent, /) -> None:
         embed = discord.Embed(
