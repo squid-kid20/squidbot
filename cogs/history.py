@@ -92,6 +92,25 @@ class History(commands.Cog):
         if old_content != content:
             self._add_new_message(data, version + 1)
 
+    def get_message(self, message_id: int, /) -> dict[str, Any] | None:
+        """Get the latest version of a message by its ID, if it exists."""
+
+        cursor = self._connection.execute("""
+                SELECT MAX("version"), "json"
+                FROM "messages"
+                WHERE "message_id" = ?
+            """,
+            (message_id,),
+        )
+
+        row: tuple[Optional[int], Optional[str]] = cursor.fetchone()
+        version, raw_json = row
+        if version is None or raw_json is None:
+            return None
+
+        data: dict[str, Any] = json.loads(raw_json)
+        return data
+
     @commands.Cog.listener()
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
         cursor = self._connection.execute("""

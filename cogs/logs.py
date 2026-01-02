@@ -7,6 +7,8 @@ import json
 import os
 import pathlib
 from discord.ext import commands
+from .history import History
+from typing import Any
 
 
 class Logs(commands.Cog):
@@ -72,6 +74,102 @@ class Logs(commands.Cog):
                     await channel.send(
                         f'\N{PAPERCLIP} _Attachments of message {message.id} could not be found._',
                     )
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
+        if payload.cached_message is not None:
+            return
+
+        message_channel = self.bot.get_channel(payload.channel_id)
+        if not isinstance(message_channel, discord.abc.GuildChannel):
+            return
+        if payload.guild_id is None:
+            return
+        if str(payload.guild_id) not in self.configs:
+            return
+
+        config = self.configs[str(payload.guild_id)]
+
+        for channel_id, channel_config in config.items():
+            if not channel_config.get('message_delete', False):
+                continue
+            channel = self.bot.get_channel(int(channel_id))
+            if not isinstance(channel, discord.TextChannel):
+                continue
+            if channel.guild.id != payload.guild_id:
+                continue
+
+            history: History = self.bot.get_cog('History') # type: ignore
+            assert(history)
+
+            data = history.get_message(payload.message_id)
+            if data is None:
+                await self._log_uncached_message_delete(channel, payload)
+            else:
+                await self._log_historical_message_delete(channel, data)
+
+    async def _log_uncached_message_delete(self, log_channel: discord.TextChannel, payload: discord.RawMessageDeleteEvent, /) -> None:
+        embed = discord.Embed(
+            colour=discord.Colour.red(),
+            title='Uncached message',
+            description='_Content unknown_',
+        ).set_footer(
+            text=id_tags(
+                message_id=payload.message_id,
+                channel_id=payload.channel_id,
+            ),
+        )
+
+        await log_channel.send(
+            f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
+            f'In <#{payload.channel_id}>',
+            embed=embed,
+        )
+
+    async def _log_historical_message_delete(self, log_channel: discord.TextChannel, data: dict[str, Any], /) -> None:
+        message_id: int = data['id']
+        channel_id: int = data['channel_id']
+        author_id: int = data['author']['id']
+        content: str = data['content']
+        timestamp: str = data['timestamp']
+        try:
+            author = (log_channel.guild.get_member(author_id)
+                or self.bot.get_user(author_id)
+                or await self.bot.fetch_user(author_id))
+        except (discord.NotFound, discord.HTTPException):
+            author = None
+
+        embed = discord.Embed(
+            colour=get_colour(author) if author else discord.Colour.default(),
+            description=content,
+        )
+
+        if author:
+            embed.set_author(
+                name=author.display_name,
+                icon_url=author.display_avatar.url,
+            )
+        else:
+            embed.set_author(
+                name=f'User {author_id}',
+            )
+
+        embed.set_footer(
+            text=id_tags(
+                user_id=author_id,
+                message_id=message_id,
+                channel_id=channel_id,
+            ),
+        )
+        reltime = relative_time(discord.utils.parse_time(timestamp))
+
+        await log_channel.send(
+            f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
+            f'Sent {reltime} by <@{author_id}> in <#{channel_id}>',
+            embed=embed,
+        )
+
+        # TODO: handle attachments
 
     async def download_attachments(self, message: discord.Message, /) -> None:
         """Download attachments from a message."""
