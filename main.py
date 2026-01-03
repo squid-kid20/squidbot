@@ -19,7 +19,7 @@ class BotClient(commands.Bot):
         intents = discord.Intents.all()
         allowed_mentions = discord.AllowedMentions.none()
         super().__init__(
-            command_prefix='!',
+            command_prefix='b!',
             intents=intents,
             allowed_mentions=allowed_mentions,
             enable_debug_events=True, # needed for on_socket_raw_receive
