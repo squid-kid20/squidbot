@@ -29,6 +29,7 @@ class History(commands.Cog):
                     "channel_id" INTEGER NOT NULL,
                     "author_id" INTEGER NOT NULL,
                     "version" INTEGER NOT NULL DEFAULT 0,
+                    "pinned" INTEGER NOT NULL,
                     "edited_timestamp" TEXT,
                     "content" TEXT NOT NULL,
                     "attachments" TEXT NOT NULL,
@@ -251,6 +252,7 @@ class History(commands.Cog):
         message_id: int = data['id']
         channel_id: int = data['channel_id']
         author_id: int = data['author']['id']
+        pinned: bool = data['pinned']
         edited_timestamp: str | None = data.get('edited_timestamp')
         content: str = data['content']
         attachments: str = json.dumps(data['attachments'])
@@ -259,11 +261,11 @@ class History(commands.Cog):
 
         self._connection.execute("""
                 INSERT INTO "messages"
-                (message_id, channel_id, author_id, version, edited_timestamp, content, attachments, embeds, json)
+                (message_id, channel_id, author_id, version, pinned, edited_timestamp, content, attachments, embeds, json)
                 VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (message_id, channel_id, author_id, version, edited_timestamp, content, attachments, embeds, raw_json),
+            (message_id, channel_id, author_id, version, int(pinned), edited_timestamp, content, attachments, embeds, raw_json),
         )
         self._connection.commit()
 
@@ -275,27 +277,31 @@ class History(commands.Cog):
         If the message doesn't exist, add it as a new message.
         """
         message_id: int = int(data['id'])
-        content: str = data['content']
-        edited_timestamp: str | None = data.get('edited_timestamp')
 
         cursor = self._connection.execute("""
-                SELECT MAX("version"), "edited_timestamp", "content", "attachments", "embeds"
+                SELECT MAX("version"), "pinned", "edited_timestamp", "content", "attachments", "embeds"
                 FROM "messages"
                 WHERE "message_id" = ?
             """,
             (message_id,),
         )
 
-        row: tuple[Optional[int], Optional[str], Optional[str], Optional[str], Optional[str]] | None = cursor.fetchone()
-        version, old_edited_timestamp, old_content, old_attachments, old_embeds = row or (None, None, None, None, None)
-        if version is None or old_content is None or old_attachments is None or old_embeds is None:
+        row: tuple[Optional[int], Optional[int], Optional[str], Optional[str], Optional[str], Optional[str]] | None = cursor.fetchone()
+        version, old_pinned, old_edited_timestamp, old_content, old_attachments, old_embeds = row or (None, None, None, None, None, None)
+        if version is None or old_pinned is None or old_content is None or old_attachments is None or old_embeds is None:
             # Message does not exist, add it
             self._add_new_message(data)
             return
 
+        pinned: bool = data['pinned']
+        content: str = data['content']
+        edited_timestamp: str | None = data.get('edited_timestamp')
+
+        old_pinned = bool(old_pinned)
         # Message exists, check if anything has changed
-        if (old_content != content or
+        if (old_pinned != pinned or
             old_edited_timestamp != edited_timestamp or
+            old_content != content or
             json.loads(old_attachments) != data['attachments'] or
             json.loads(old_embeds) != data['embeds']):
             self._add_new_message(data, version + 1)
