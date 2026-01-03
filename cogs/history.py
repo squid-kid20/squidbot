@@ -127,8 +127,8 @@ class History(commands.Cog):
             (message_id,),
         )
 
-        row: tuple[Optional[int], Optional[str], Optional[str]] = cursor.fetchone()
-        version, old_content, old_attachments = row
+        row: tuple[Optional[int], Optional[str], Optional[str]] | None = cursor.fetchone()
+        version, old_content, old_attachments = row or (None, None, None)
         if version is None or old_content is None or old_attachments is None:
             # Message does not exist, add it
             self._add_new_message(data)
@@ -149,8 +149,8 @@ class History(commands.Cog):
             (message_id,),
         )
 
-        row: tuple[Optional[int], Optional[str]] = cursor.fetchone()
-        version, raw_json = row
+        row: tuple[Optional[int], Optional[str]] | None= cursor.fetchone()
+        version, raw_json = row or (None, None)
         if version is None or raw_json is None:
             return None
 
@@ -242,8 +242,8 @@ class History(commands.Cog):
             (payload.message_id,),
         )
 
-        row: tuple[Optional[int], Optional[str]] = cursor.fetchone()
-        version, old_json = row
+        row: tuple[Optional[int], Optional[str]] | None = cursor.fetchone()
+        version, old_json = row or (None, None)
 
         version = version or 0
         version += 1
