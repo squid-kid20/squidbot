@@ -206,7 +206,12 @@ class History(commands.Cog):
         version += 1
 
         data: dict[str, Any] = payload.data # type: ignore # docs say it's a dict
-        self._add_new_message(data, version)
+        if old_json is not None:
+            new_data: dict[str, Any] = json.loads(old_json)
+            new_data.update(data)
+        else:
+            new_data = data
+        self._add_new_message(new_data, version)
 
         if version is None or old_json is None:
             return None
