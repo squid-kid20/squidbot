@@ -29,6 +29,7 @@ class History(commands.Cog):
                     "channel_id" INTEGER NOT NULL,
                     "author_id" INTEGER NOT NULL,
                     "version" INTEGER NOT NULL DEFAULT 0,
+                    "edited_timestamp" TEXT,
                     "content" TEXT NOT NULL,
                     "attachments" TEXT NOT NULL,
                     "embeds" TEXT NOT NULL,
@@ -250,6 +251,7 @@ class History(commands.Cog):
         message_id: int = data['id']
         channel_id: int = data['channel_id']
         author_id: int = data['author']['id']
+        edited_timestamp: str | None = data.get('edited_timestamp')
         content: str = data['content']
         attachments: str = json.dumps(data['attachments'])
         embeds: str = json.dumps(data['embeds'])
@@ -257,11 +259,11 @@ class History(commands.Cog):
 
         self._connection.execute("""
                 INSERT INTO "messages"
-                (message_id, channel_id, author_id, version, content, attachments, embeds, json)
+                (message_id, channel_id, author_id, version, edited_timestamp, content, attachments, embeds, json)
                 VALUES
-                (?, ?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (message_id, channel_id, author_id, version, content, attachments, embeds, raw_json),
+            (message_id, channel_id, author_id, version, edited_timestamp, content, attachments, embeds, raw_json),
         )
         self._connection.commit()
 
@@ -274,17 +276,18 @@ class History(commands.Cog):
         """
         message_id: int = int(data['id'])
         content: str = data['content']
+        edited_timestamp: str | None = data.get('edited_timestamp')
 
         cursor = self._connection.execute("""
-                SELECT MAX("version"), "content", "attachments", "embeds"
+                SELECT MAX("version"), "edited_timestamp", "content", "attachments", "embeds"
                 FROM "messages"
                 WHERE "message_id" = ?
             """,
             (message_id,),
         )
 
-        row: tuple[Optional[int], Optional[str], Optional[str], Optional[str]] | None = cursor.fetchone()
-        version, old_content, old_attachments, old_embeds = row or (None, None, None, None)
+        row: tuple[Optional[int], Optional[str], Optional[str], Optional[str], Optional[str]] | None = cursor.fetchone()
+        version, old_edited_timestamp, old_content, old_attachments, old_embeds = row or (None, None, None, None, None)
         if version is None or old_content is None or old_attachments is None or old_embeds is None:
             # Message does not exist, add it
             self._add_new_message(data)
@@ -292,6 +295,7 @@ class History(commands.Cog):
 
         # Message exists, check if anything has changed
         if (old_content != content or
+            old_edited_timestamp != edited_timestamp or
             json.loads(old_attachments) != data['attachments'] or
             json.loads(old_embeds) != data['embeds']):
             self._add_new_message(data, version + 1)
