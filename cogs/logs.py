@@ -304,6 +304,156 @@ class Logs(commands.Cog):
                     await log_channel.send('\n'.join(text), embed=embed)
 
     @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent) -> None:
+        # We have to handle this rather than the history cog in order to avoid
+        # a race condition where the history cog could update the message before
+        # we grab the latest (older) version.
+        history: History = self.bot.get_cog('History') # type: ignore
+        assert(history)
+        data = history.get_and_update_message(payload)
+
+        if payload.cached_message is not None:
+            return
+
+        message_channel = self.bot.get_channel(payload.channel_id)
+        if not isinstance(message_channel, discord.abc.GuildChannel):
+            return
+        if payload.guild_id is None:
+            return
+        if str(payload.guild_id) not in self.configs:
+            return
+
+        guild_config = self.configs[str(payload.guild_id)]
+
+        for log_channel_id, log_channel_config in guild_config.items():
+            if not log_channel_config.get('message_edit', False):
+                continue
+            log_channel = self.bot.get_channel(int(log_channel_id))
+            if not isinstance(log_channel, discord.TextChannel):
+                continue
+            if log_channel.guild.id != payload.guild_id:
+                continue
+
+            if data is None:
+                await self._log_uncached_message_edit(log_channel, payload)
+            else:
+                await self._log_historical_message_edit(log_channel, payload, data)
+
+    async def _log_uncached_message_edit(self, log_channel: discord.TextChannel, payload: discord.RawMessageUpdateEvent, /) -> None:
+        embed = discord.Embed(
+            title='Uncached message',
+            colour=get_colour(payload.message.author),
+            description=payload.message.content,
+        ).set_author(
+            name=payload.message.author.display_name,
+            icon_url=payload.message.author.display_avatar.url,
+        ).set_footer(
+            text=id_tags(
+                user_id=payload.message.author.id,
+                message_id=payload.message.id,
+                channel_id=payload.message.channel.id,
+            ),
+        )
+
+        reltime = relative_time(payload.message.created_at)
+        await log_channel.send(
+            '**\N{MEMO} MESSAGE EDITED**\n'
+            f'Sent {reltime} by {payload.message.author.mention} at {payload.message.jump_url}',
+            embed=embed,
+        )
+
+        # I don't think it's possible that we have the attachments of a message even though it's uncached, but just in case
+        exclude_ids = [attachment.id for attachment in payload.message.attachments]
+        history: History = self.bot.get_cog('History') # type: ignore
+        assert(history)
+        files = history.get_downloaded_attachments(payload.guild_id or 0, payload.channel_id, payload.message_id, exclude_ids=exclude_ids)
+        if files:
+            await log_channel.send(
+                f'\N{PAPERCLIP} _Previous attachments of message {payload.message_id}:_',
+                files=files,
+            )
+
+    async def _log_historical_message_edit(self, log_channel: discord.TextChannel, payload: discord.RawMessageUpdateEvent, data: dict[str, Any], /) -> None:
+        before_content: str = data['content']
+
+        if before_content != payload.message.content:
+            embed = discord.Embed(
+                colour=get_colour(payload.message.author),
+            )
+
+            if len(before_content) <= 1024 and len(payload.message.content) <= 1024:
+                embed.add_field(
+                    name='Before (empty)' if not before_content else 'Before',
+                    value=before_content or '_No content_',
+                    inline=False,
+                ).add_field(
+                    name='After (empty)' if not payload.message.content else 'After',
+                    value=payload.message.content or '_No content_',
+                    inline=False,
+                )
+            else:
+                embed.title = 'Before (empty)' if not before_content else 'Before'
+                embed.description = before_content
+
+            embed.set_author(
+                name=payload.message.author.display_name,
+                icon_url=payload.message.author.display_avatar.url,
+            ).set_footer(
+                text=id_tags(
+                    user_id=payload.message.author.id,
+                    message_id=payload.message.id,
+                    channel_id=payload.message.channel.id,
+                ),
+            )
+
+            reltime = relative_time(payload.message.created_at)
+            await log_channel.send(
+                '**\N{MEMO} MESSAGE EDITED**\n'
+                f'Sent {reltime} by {payload.message.author.mention} at {payload.message.jump_url}',
+                embed=embed,
+            )
+
+        before_attachments: list[dict[str, Any]] = data['attachments']
+        removed_attachment_ids = [int(attachment['id']) for attachment in before_attachments if attachment not in payload.message.attachments]
+        if removed_attachment_ids:
+            history: History = self.bot.get_cog('History') # type: ignore
+            assert(history)
+
+            descriptions: dict[int, str] = {int(attachment['id']): attachment['description'] for attachment in before_attachments if 'description' in attachment}
+
+            files = history.get_downloaded_attachments(
+                payload.guild_id or 0, payload.channel_id, payload.message_id,
+                attachment_ids=removed_attachment_ids,
+                descriptions=descriptions,
+            )
+
+            embed = discord.Embed(
+                description=before_content,
+                colour=get_colour(payload.message.author),
+            ).set_author(
+                name=payload.message.author.display_name,
+                icon_url=payload.message.author.display_avatar.url,
+            ).set_footer(
+                text=id_tags(
+                    user_id=payload.message.author.id,
+                    message_id=payload.message.id,
+                    channel_id=payload.message.channel.id,
+                ),
+            )
+
+            reltime = relative_time(payload.message.created_at)
+            text = [
+                '**\N{MEMO} MESSAGE ATTACHMENTS REMOVED**',
+                f'Sent {reltime} by {payload.message.author.mention} at {payload.message.jump_url}',
+            ]
+            if files:
+                text.append(f'\N{PAPERCLIP} _Removed attachments are attached._')
+                await log_channel.send('\n'.join(text), embed=embed, files=files)
+            else:
+                text.append(f'\N{PAPERCLIP} _Removed attachments could not be found._')
+                await log_channel.send('\n'.join(text), embed=embed)
+
+    @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         if str(member.guild.id) not in self.configs:
             return

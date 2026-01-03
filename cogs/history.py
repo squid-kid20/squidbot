@@ -155,10 +155,12 @@ class History(commands.Cog):
     def get_downloaded_attachments(
         self, guild_id: int, channel_id: int, message_id: int, /,
         *, attachment_ids: list[int] | None = None,
+        exclude_ids: list[int] | None = None,
         descriptions: dict[int, str] | None = None,
     ) -> list[discord.File]:
         """Get the downloaded attachments for a message.
         If attachment_ids is specified, only attachments returned are those with IDs in attachment_ids.
+        If exclude_ids is specified, attachments with IDs in exclude_ids are not returned.
         If an ID has a description in descriptions, the corresponding File will also have that description.
         """
 
@@ -174,6 +176,8 @@ class History(commands.Cog):
                 attachment_id = int(filename[1:].split('-', 1)[0])
                 if attachment_ids is not None and attachment_id not in attachment_ids:
                     continue
+                if exclude_ids is not None and attachment_id in exclude_ids:
+                    continue
 
                 filepath = pathlib.Path(path, filename)
                 filename = filename.split('-', 1)[1]
@@ -181,18 +185,22 @@ class History(commands.Cog):
 
         return files
 
-    @commands.Cog.listener()
-    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
+    def get_and_update_message(self, payload: discord.RawMessageUpdateEvent) -> dict[str, Any] | None:
+        """Get the latest version of a message by its ID, if it exists.
+        Also, add a new version of the message with the updated data.
+        Returns the latest version of the message before the update.
+        """
+
         cursor = self._connection.execute("""
-                SELECT MAX("version")
+                SELECT MAX("version"), "json"
                 FROM "messages"
                 WHERE "message_id" = ?
             """,
             (payload.message_id,),
         )
 
-        row: tuple[Optional[int]] = cursor.fetchone()
-        version, = row
+        row: tuple[Optional[int], Optional[str]] = cursor.fetchone()
+        version, old_json = row
 
         version = version or 0
         version += 1
@@ -200,6 +208,14 @@ class History(commands.Cog):
         data: dict[str, Any] = payload.data # type: ignore # docs say it's a dict
         self._add_new_message(data, version)
 
+        if version is None or old_json is None:
+            return None
+
+        old_data: dict[str, Any] = json.loads(old_json)
+        return old_data
+
+    @commands.Cog.listener()
+    async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
         await self._download_attachments(payload.message)
 
 async def setup(bot: BotClient):
