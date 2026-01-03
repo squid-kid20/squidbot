@@ -40,7 +40,10 @@ class History(commands.Cog):
 
         self.bot.register_create_message_hook(self._update_message)
 
-    async def _get_new_messages(self, channel: discord.TextChannel, /) -> None:
+    async def _get_new_messages(self, channel: discord.abc.Messageable, /) -> None:
+        if not isinstance(channel, discord.abc.GuildChannel):
+            raise TypeError('channel must also be a GuildChannel')
+
         cursor = self._connection.execute("""
                 SELECT "channel_id", "last_message_id"
                 FROM "channels"
