@@ -35,7 +35,7 @@ class BotClient(commands.Bot):
                 self._configs = json.load(file)
         except FileNotFoundError:
             with open('config.json', 'w') as file:
-                json.dump(self._configs, file)
+                json.dump(self._configs, file, indent=4)
 
         self._create_message_hooks: list[Callable[[dict[str, Any]], None]] = []
 

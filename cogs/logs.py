@@ -520,7 +520,7 @@ class Logs(commands.Cog):
         json_data = {str(key): value for key, value in config.items()}
 
         with open(f'logs/{guild_id}.json', 'w') as file:
-            json.dump(json_data, file)
+            json.dump(json_data, file, indent=4)
 
     @commands.guild_only()
     #@commands.hybrid_group()
