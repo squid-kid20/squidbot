@@ -31,6 +31,7 @@ class History(commands.Cog):
                     "version" INTEGER NOT NULL DEFAULT 0,
                     "content" TEXT NOT NULL,
                     "attachments" TEXT NOT NULL,
+                    "embeds" TEXT NOT NULL,
                     "json" TEXT NOT NULL,
                     PRIMARY KEY ("message_id", "version")
                 );
@@ -53,11 +54,11 @@ class History(commands.Cog):
         self.bot.register_create_message_hook(check_before_update_message)
 
     def _enqueue_all_allowed_channels_in_guild(self, guild: discord.Guild) -> None:
-            for channel in guild.channels:
-                if isinstance(channel, discord.abc.Messageable):
-                    self._enqueue_channel_fetch_if_allowed(channel)
-            for thread in guild.threads:
-                self._enqueue_channel_fetch_if_allowed(thread)
+        for channel in guild.channels:
+            if isinstance(channel, discord.abc.Messageable):
+                self._enqueue_channel_fetch_if_allowed(channel)
+        for thread in guild.threads:
+            self._enqueue_channel_fetch_if_allowed(thread)
 
     async def cog_load(self) -> None:
         for guild in self.bot.guilds:
@@ -243,7 +244,7 @@ class History(commands.Cog):
             channel = self.bot.get_channel(channel_id)
             disabled = isinstance(channel, discord.abc.GuildChannel) and not self.bot.history_enabled(channel.guild.id)
             if not disabled:
-            self._add_new_message(payload['d'])
+                self._add_new_message(payload['d'])
 
     def _add_new_message(self, data: dict[str, Any], version = 0, /) -> None:
         message_id: int = data['id']
@@ -251,15 +252,16 @@ class History(commands.Cog):
         author_id: int = data['author']['id']
         content: str = data['content']
         attachments: str = json.dumps(data['attachments'])
+        embeds: str = json.dumps(data['embeds'])
         raw_json: str = json.dumps(data)
 
         self._connection.execute("""
                 INSERT INTO "messages"
-                (message_id, channel_id, author_id, version, content, attachments, json)
+                (message_id, channel_id, author_id, version, content, attachments, embeds, json)
                 VALUES
-                (?, ?, ?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (message_id, channel_id, author_id, version, content, attachments, raw_json),
+            (message_id, channel_id, author_id, version, content, attachments, embeds, raw_json),
         )
         self._connection.commit()
 
@@ -274,22 +276,24 @@ class History(commands.Cog):
         content: str = data['content']
 
         cursor = self._connection.execute("""
-                SELECT MAX("version"), "content", "attachments"
+                SELECT MAX("version"), "content", "attachments", "embeds"
                 FROM "messages"
                 WHERE "message_id" = ?
             """,
             (message_id,),
         )
 
-        row: tuple[Optional[int], Optional[str], Optional[str]] | None = cursor.fetchone()
-        version, old_content, old_attachments = row or (None, None, None)
-        if version is None or old_content is None or old_attachments is None:
+        row: tuple[Optional[int], Optional[str], Optional[str], Optional[str]] | None = cursor.fetchone()
+        version, old_content, old_attachments, old_embeds = row or (None, None, None, None)
+        if version is None or old_content is None or old_attachments is None or old_embeds is None:
             # Message does not exist, add it
             self._add_new_message(data)
             return
 
         # Message exists, check if anything has changed
-        if old_content != content or json.loads(old_attachments) != data['attachments']:
+        if (old_content != content or
+            json.loads(old_attachments) != data['attachments'] or
+            json.loads(old_embeds) != data['embeds']):
             self._add_new_message(data, version + 1)
 
     def get_message(self, message_id: int, /) -> dict[str, Any] | None:
