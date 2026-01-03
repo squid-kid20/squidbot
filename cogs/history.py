@@ -30,9 +30,52 @@ class History(commands.Cog):
                 );
             """,
         )
+        self._connection.execute("""
+                CREATE TABLE IF NOT EXISTS "channels" (
+                    "channel_id" INTEGER PRIMARY KEY NOT NULL,
+                    "last_message_id" INTEGER
+                );
+            """)
         self._connection.commit()
 
         self.bot.register_create_message_hook(self._update_message)
+
+    async def _get_new_messages(self, channel: discord.TextChannel, /) -> None:
+        cursor = self._connection.execute("""
+                SELECT "channel_id", "last_message_id"
+                FROM "channels"
+                WHERE "channel_id" = ?
+            """,
+            (channel.id,),
+        )
+        row: tuple[Optional[int], Optional[int]] | None = cursor.fetchone()
+        db_channel_id, last_message_id = row or (None, None)
+
+        if db_channel_id is None:
+            self._connection.execute("""
+                    INSERT INTO "channels" ("channel_id", "last_message_id")
+                    VALUES (?, ?)
+                """,
+                (channel.id, last_message_id),
+            )
+            self._connection.commit()
+
+        last_message_id = last_message_id or 0
+        async for message in channel.history(after=discord.Object(id=last_message_id), limit=None, oldest_first=True):
+            # all fetched messages trigger _update_message hook
+
+            last_message_id = message.id
+            self._connection.execute("""
+                    UPDATE "channels"
+                    SET "last_message_id" = ?
+                    WHERE "channel_id" = ?
+                """,
+                (last_message_id, channel.id),
+            )
+            self._connection.commit()
+
+            if message.attachments:
+                await self._download_attachments(message)
 
     @commands.Cog.listener()
     async def on_socket_raw_receive(self, msg: str):
