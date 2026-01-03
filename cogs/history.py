@@ -270,7 +270,7 @@ class History(commands.Cog):
         If it has, add a new version of the message with the new content.
         If the message doesn't exist, add it as a new message.
         """
-        message_id: int = data['id']
+        message_id: int = int(data['id'])
         content: str = data['content']
 
         cursor = self._connection.execute("""
