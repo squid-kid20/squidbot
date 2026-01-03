@@ -44,10 +44,15 @@ class History(commands.Cog):
             """)
         self._connection.commit()
 
-        self.bot.register_create_message_hook(self._update_message)
+        def check_before_update_message(data: dict[str, Any], /):
+            channel_id: int = int(data['channel_id'])
+            channel = self.bot.get_channel(channel_id)
+            if isinstance(channel, discord.abc.GuildChannel) and not self.bot.history_enabled(channel.guild.id):
+                return
+            self._update_message(data)
+        self.bot.register_create_message_hook(check_before_update_message)
 
-    async def _enqueue_all_allowed_guild_channels(self) -> None:
-        for guild in self.bot.guilds:
+    def _enqueue_all_allowed_channels_in_guild(self, guild: discord.Guild) -> None:
             for channel in guild.channels:
                 if isinstance(channel, discord.abc.Messageable):
                     self._enqueue_channel_fetch_if_allowed(channel)
@@ -55,7 +60,9 @@ class History(commands.Cog):
                 self._enqueue_channel_fetch_if_allowed(thread)
 
     async def cog_load(self) -> None:
-        await self._enqueue_all_allowed_guild_channels()
+        for guild in self.bot.guilds:
+            if self.bot.history_fetching_enabled(guild.id):
+                self._enqueue_all_allowed_channels_in_guild(guild)
 
     def _enqueue_channel_fetch_if_allowed(self, channel: discord.abc.Messageable, /) -> None:
         if not isinstance(channel, (discord.abc.GuildChannel, discord.Thread)):
@@ -128,44 +135,71 @@ class History(commands.Cog):
 
     @commands.Cog.listener()
     async def on_guild_available(self, guild: discord.Guild) -> None:
-        await self._enqueue_all_allowed_guild_channels()
+        if not self.bot.history_fetching_enabled(guild.id):
+            return
+
+        self._enqueue_all_allowed_channels_in_guild(guild)
 
     @commands.Cog.listener()
     async def on_guild_join(self, guild: discord.Guild) -> None:
-        await self._enqueue_all_allowed_guild_channels()
+        if not self.bot.history_fetching_enabled(guild.id):
+            return
+
+        self._enqueue_all_allowed_channels_in_guild(guild)
 
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
+        if not self.bot.history_fetching_enabled(channel.guild.id):
+            return
+
         if isinstance(channel, discord.abc.Messageable):
             self._enqueue_channel_fetch_if_allowed(channel)
 
     @commands.Cog.listener()
     async def on_guild_channel_update(self, _, after: discord.abc.GuildChannel) -> None:
+        if not self.bot.history_fetching_enabled(after.guild.id):
+            return
+
         if isinstance(after, discord.abc.Messageable):
             self._enqueue_channel_fetch_if_allowed(after)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
+        if not self.bot.history_fetching_enabled(after.guild.id):
+            return
+
         if after.guild.me == self.bot and before.roles != after.roles:
-            await self._enqueue_all_allowed_guild_channels()
+            self._enqueue_all_allowed_channels_in_guild(after.guild)
 
     @commands.Cog.listener()
     async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> None:
+        if not self.bot.history_fetching_enabled(after.guild.id):
+            return
+
         # It's rare that new channels are viewable solely from a permissions update, but it's possible
         if after in after.guild.me.roles and before.permissions != after.permissions:
-            await self._enqueue_all_allowed_guild_channels()
+            self._enqueue_all_allowed_channels_in_guild(after.guild)
 
     @commands.Cog.listener()
     async def on_thread_create(self, thread: discord.Thread) -> None:
+        if not self.bot.history_fetching_enabled(thread.guild.id):
+            return
+
         self._enqueue_channel_fetch_if_allowed(thread)
 
     @commands.Cog.listener()
     async def on_thread_update(self, _, after: discord.Thread) -> None:
+        if not self.bot.history_fetching_enabled(after.guild.id):
+            return
+
         self._enqueue_channel_fetch_if_allowed(after)
 
     @commands.Cog.listener()
     async def on_raw_thread_update(self, payload: discord.RawThreadUpdateEvent) -> None:
         if payload.thread is not None:
+            return
+
+        if not self.bot.history_fetching_enabled(payload.guild_id):
             return
 
         guild = self.bot.get_guild(payload.guild_id)
@@ -187,6 +221,9 @@ class History(commands.Cog):
 
     @commands.Cog.listener()
     async def on_thread_member_join(self, member: discord.ThreadMember) -> None:
+        if not self.bot.history_fetching_enabled(member.thread.guild.id):
+            return
+
         if member == member.thread.guild.me:
             self._enqueue_channel_fetch_if_allowed(member.thread)
 
@@ -202,6 +239,10 @@ class History(commands.Cog):
 
         payload: dict[str, Any] = json.loads(msg)
         if payload['t'] == 'MESSAGE_CREATE':
+            channel_id = int(payload['d']['channel_id'])
+            channel = self.bot.get_channel(channel_id)
+            disabled = isinstance(channel, discord.abc.GuildChannel) and not self.bot.history_enabled(channel.guild.id)
+            if not disabled:
             self._add_new_message(payload['d'])
 
     def _add_new_message(self, data: dict[str, Any], version = 0, /) -> None:
@@ -272,6 +313,9 @@ class History(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message) -> None:
+        if message.guild is not None and not self.bot.history_enabled(message.guild.id):
+            return
+
         if message.attachments:
             await self._download_attachments(message)
 
@@ -380,6 +424,9 @@ class History(commands.Cog):
 
     @commands.Cog.listener()
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent):
+        if payload.message.guild is not None and not self.bot.history_enabled(payload.message.guild.id):
+            return
+
         await self._download_attachments(payload.message)
 
 async def setup(bot: BotClient):

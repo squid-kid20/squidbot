@@ -1,5 +1,6 @@
 __pycache__/
 bot_token.txt
+config.json
 logs/
 media/
 databases/
