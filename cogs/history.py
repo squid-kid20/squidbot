@@ -1,7 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-only
 
+import asyncio
 import discord
 import json
+import logging
 import os
 import pathlib
 import sqlite3
@@ -13,6 +15,10 @@ from typing import Any, Optional
 class History(commands.Cog):
     def __init__(self, bot: BotClient):
         self.bot = bot
+        self._fetching_channel_ids: set[int] = set()
+        self._channel_ids_queue: asyncio.Queue[int] = asyncio.Queue()
+        self._channel_fetch_task = self.bot.loop.create_task(self._channel_fetch_worker())
+
         os.makedirs('databases', exist_ok=True)
         self._connection = sqlite3.connect('databases/history.sqlite', autocommit=False)
 
@@ -40,9 +46,49 @@ class History(commands.Cog):
 
         self.bot.register_create_message_hook(self._update_message)
 
+    async def _enqueue_all_allowed_guild_channels(self) -> None:
+        for guild in self.bot.guilds:
+            for channel in guild.channels:
+                if isinstance(channel, discord.abc.Messageable):
+                    self._enqueue_channel_fetch_if_allowed(channel)
+            for thread in guild.threads:
+                self._enqueue_channel_fetch_if_allowed(thread)
+
+    async def cog_load(self) -> None:
+        await self._enqueue_all_allowed_guild_channels()
+
+    def _enqueue_channel_fetch_if_allowed(self, channel: discord.abc.Messageable, /) -> None:
+        if not isinstance(channel, (discord.abc.GuildChannel, discord.Thread)):
+            raise TypeError('channel must also be a GuildChannel or Thread')
+
+        permission = channel.permissions_for(channel.guild.me)
+        if permission.read_message_history:
+            self._enqueue_channel_fetch(channel.id)
+
+    def _enqueue_channel_fetch(self, channel_id: int, /) -> None:
+        if channel_id in self._fetching_channel_ids:
+            return
+
+        self._fetching_channel_ids.add(channel_id)
+        self._channel_ids_queue.put_nowait(channel_id)
+
+    async def _channel_fetch_worker(self) -> None:
+        while True:
+            channel_id = await self._channel_ids_queue.get()
+            channel = self.bot.get_channel(channel_id)
+            assert(channel is not None and isinstance(channel, discord.abc.Messageable))
+
+            try:
+                await self._get_new_messages(channel)
+            except (discord.Forbidden, discord.HTTPException) as e:
+                logging.warning('Error fetching messages for channel %s: %s', channel_id, e)
+
+            self._fetching_channel_ids.remove(channel_id)
+            self._channel_ids_queue.task_done()
+
     async def _get_new_messages(self, channel: discord.abc.Messageable, /) -> None:
-        if not isinstance(channel, discord.abc.GuildChannel):
-            raise TypeError('channel must also be a GuildChannel')
+        if not isinstance(channel, (discord.abc.GuildChannel, discord.Thread)):
+            raise TypeError('channel must also be a GuildChannel or Thread')
 
         cursor = self._connection.execute("""
                 SELECT "channel_id", "last_message_id"
@@ -79,6 +125,70 @@ class History(commands.Cog):
 
             if message.attachments:
                 await self._download_attachments(message)
+
+    @commands.Cog.listener()
+    async def on_guild_available(self, guild: discord.Guild) -> None:
+        await self._enqueue_all_allowed_guild_channels()
+
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        await self._enqueue_all_allowed_guild_channels()
+
+    @commands.Cog.listener()
+    async def on_guild_channel_create(self, channel: discord.abc.GuildChannel) -> None:
+        if isinstance(channel, discord.abc.Messageable):
+            self._enqueue_channel_fetch_if_allowed(channel)
+
+    @commands.Cog.listener()
+    async def on_guild_channel_update(self, _, after: discord.abc.GuildChannel) -> None:
+        if isinstance(after, discord.abc.Messageable):
+            self._enqueue_channel_fetch_if_allowed(after)
+
+    @commands.Cog.listener()
+    async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
+        if after.guild.me == self.bot and before.roles != after.roles:
+            await self._enqueue_all_allowed_guild_channels()
+
+    @commands.Cog.listener()
+    async def on_guild_role_update(self, before: discord.Role, after: discord.Role) -> None:
+        # It's rare that new channels are viewable solely from a permissions update, but it's possible
+        if after in after.guild.me.roles and before.permissions != after.permissions:
+            await self._enqueue_all_allowed_guild_channels()
+
+    @commands.Cog.listener()
+    async def on_thread_create(self, thread: discord.Thread) -> None:
+        self._enqueue_channel_fetch_if_allowed(thread)
+
+    @commands.Cog.listener()
+    async def on_thread_update(self, _, after: discord.Thread) -> None:
+        self._enqueue_channel_fetch_if_allowed(after)
+
+    @commands.Cog.listener()
+    async def on_raw_thread_update(self, payload: discord.RawThreadUpdateEvent) -> None:
+        if payload.thread is not None:
+            return
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if guild is None:
+            return
+
+        thread = guild.get_thread(payload.thread_id)
+        if thread is not None:
+            self._enqueue_channel_fetch_if_allowed(thread)
+            return
+
+        thread = await guild.fetch_channel(payload.thread_id)
+        if thread is not None and isinstance(thread, discord.abc.Messageable):
+            self._enqueue_channel_fetch_if_allowed(thread)
+            return
+
+        # Screw it, just assume we're allowed to
+        self._enqueue_channel_fetch(payload.thread_id)
+
+    @commands.Cog.listener()
+    async def on_thread_member_join(self, member: discord.ThreadMember) -> None:
+        if member == member.thread.guild.me:
+            self._enqueue_channel_fetch_if_allowed(member.thread)
 
     @commands.Cog.listener()
     async def on_socket_raw_receive(self, msg: str):
@@ -180,7 +290,10 @@ class History(commands.Cog):
             filename = f'a{attachment.id}-{attachment.filename}'
             filepath = pathlib.Path(path, filename)
 
-            await attachment.save(filepath)
+            try:
+                await attachment.save(filepath)
+            except (discord.NotFound, discord.HTTPException) as e:
+                logging.warning('Failed to download attachment %s of message %s: %s', attachment.id, message.id, e)
 
     def _get_downloaded_attachment_ids(self, guild_id: int, channel_id: int, message_id: int, /) -> list[int]:
         path = f'media/{guild_id}/{channel_id}/{message_id}/'
