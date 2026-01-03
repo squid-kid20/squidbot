@@ -53,7 +53,7 @@ class Logs(commands.Cog):
             reltime = relative_time(message.created_at)
 
             await log_channel.send(
-                f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
+                '**\N{WASTEBASKET} MESSAGE DELETED**\n'
                 f'Sent {reltime} by {message.author.mention} in {message.channel.mention}',
                 embed=embed,
             )
@@ -127,7 +127,7 @@ class Logs(commands.Cog):
         )
 
         await log_channel.send(
-            f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
+            '**\N{WASTEBASKET} MESSAGE DELETED**\n'
             f'In <#{payload.channel_id}>',
             embed=embed,
         )
@@ -179,7 +179,7 @@ class Logs(commands.Cog):
         reltime = relative_time(discord.utils.parse_time(timestamp))
 
         await log_channel.send(
-            f'**\N{WASTEBASKET} MESSAGE DELETED**\n'
+            '**\N{WASTEBASKET} MESSAGE DELETED**\n'
             f'Sent {reltime} by <@{author_id}> in <#{payload.channel_id}>',
             embed=embed,
         )
@@ -259,7 +259,7 @@ class Logs(commands.Cog):
 
                 reltime = relative_time(before.created_at)
                 await log_channel.send(
-                    f'**\N{MEMO} MESSAGE EDITED**\n'
+                    '**\N{MEMO} MESSAGE EDITED**\n'
                     f'Sent {reltime} by {before.author.mention} at {before.jump_url}',
                     embed=embed,
                 )
