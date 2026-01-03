@@ -5,16 +5,21 @@ import discord
 import interface
 import json
 import os
-import pathlib
 from discord.ext import commands
 from .history import History
-from typing import Any
+from typing import Any, Optional
 
+
+VALID_LOG_ITEMS = (
+    'message_delete',
+    'message_edit',
+    'member_join',
+)
 
 class Logs(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.configs: dict[str, dict[str, dict[str, bool]]] = {}
+        self.configs: dict[int, dict[int, dict[str, bool]]] = {}
         self.load_log_configs()
 
     @commands.Cog.listener()
@@ -23,15 +28,15 @@ class Logs(commands.Cog):
             return
         if message.guild is None:
             return
-        if str(message.guild.id) not in self.configs:
+        if message.guild.id not in self.configs:
             return
 
-        guild_config = self.configs[str(message.guild.id)]
+        guild_config = self.configs[message.guild.id]
 
         for log_channel_id, log_channel_config in guild_config.items():
             if not log_channel_config.get('message_delete', False):
                 continue
-            log_channel = self.bot.get_channel(int(log_channel_id))
+            log_channel = self.bot.get_channel(log_channel_id)
             if not isinstance(log_channel, discord.TextChannel):
                 continue
             if log_channel.guild != message.guild:
@@ -91,15 +96,15 @@ class Logs(commands.Cog):
             return
         if payload.guild_id is None:
             return
-        if str(payload.guild_id) not in self.configs:
+        if payload.guild_id not in self.configs:
             return
 
-        guild_config = self.configs[str(payload.guild_id)]
+        guild_config = self.configs[payload.guild_id]
 
         for log_channel_id, log_channel_config in guild_config.items():
             if not log_channel_config.get('message_delete', False):
                 continue
-            log_channel = self.bot.get_channel(int(log_channel_id))
+            log_channel = self.bot.get_channel(log_channel_id)
             if not isinstance(log_channel, discord.TextChannel):
                 continue
             if log_channel.guild.id != payload.guild_id:
@@ -213,15 +218,15 @@ class Logs(commands.Cog):
             return
         if before.guild is None:
             return
-        if str(before.guild.id) not in self.configs:
+        if before.guild.id not in self.configs:
             return
 
-        guild_config = self.configs[str(before.guild.id)]
+        guild_config = self.configs[before.guild.id]
 
         for log_channel_id, log_channel_config in guild_config.items():
             if not log_channel_config.get('message_edit', False):
                 continue
-            log_channel = self.bot.get_channel(int(log_channel_id))
+            log_channel = self.bot.get_channel(log_channel_id)
             if not isinstance(log_channel, discord.TextChannel):
                 continue
             if log_channel.guild != before.guild:
@@ -320,15 +325,15 @@ class Logs(commands.Cog):
             return
         if payload.guild_id is None:
             return
-        if str(payload.guild_id) not in self.configs:
+        if payload.guild_id not in self.configs:
             return
 
-        guild_config = self.configs[str(payload.guild_id)]
+        guild_config = self.configs[payload.guild_id]
 
         for log_channel_id, log_channel_config in guild_config.items():
             if not log_channel_config.get('message_edit', False):
                 continue
-            log_channel = self.bot.get_channel(int(log_channel_id))
+            log_channel = self.bot.get_channel(log_channel_id)
             if not isinstance(log_channel, discord.TextChannel):
                 continue
             if log_channel.guild.id != payload.guild_id:
@@ -455,15 +460,15 @@ class Logs(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
-        if str(member.guild.id) not in self.configs:
+        if member.guild.id not in self.configs:
             return
 
-        guild_config = self.configs[str(member.guild.id)]
+        guild_config = self.configs[member.guild.id]
 
         for log_channel_id, log_channel_config in guild_config.items():
             if not log_channel_config.get('member_join', False):
                 continue
-            log_channel = self.bot.get_channel(int(log_channel_id))
+            log_channel = self.bot.get_channel(log_channel_id)
             if not isinstance(log_channel, discord.TextChannel):
                 continue
             if log_channel.guild != member.guild:
@@ -498,13 +503,191 @@ class Logs(commands.Cog):
             )
 
     def load_log_configs(self):
-        """Load log configurations for each channel."""
+        """Load log configurations for each guild."""
         for filename in os.listdir('logs/'):
             if filename.endswith('.json'):
-                guild_id = filename[:-5]
                 with open(f'logs/{filename}', 'r') as file:
-                    config = json.load(file)
+                    json_data: dict[str, dict[str, bool]] = json.load(file)
+
+                config = {int(key): value for key, value in json_data.items()}
+
+                guild_id = int(filename[:-5])
                 self.configs[guild_id] = config
+
+    def save_log_config(self, guild_id: int):
+        """Save log configurations for a guild."""
+        config = self.configs[guild_id]
+        json_data = {str(key): value for key, value in config.items()}
+
+        with open(f'logs/{guild_id}.json', 'w') as file:
+            json.dump(json_data, file)
+
+    @commands.guild_only()
+    #@commands.hybrid_group()
+    @commands.group()
+    async def log(self, ctx: commands.Context[commands.Bot]) -> None:
+        #await interface.reply(ctx, 'argument required')
+        pass
+
+    async def _cmd_check_permission(self, ctx: commands.Context[commands.Bot], channel: discord.TextChannel) -> bool:
+        assert(isinstance(ctx.author, discord.Member))
+        permissions = channel.permissions_for(ctx.author)
+        if not permissions.manage_channels:
+            await interface.reply(ctx, f"You don't have permission to manage {channel.mention}.")
+            return False
+        return True
+
+    @log.command()
+    async def create(self, ctx: commands.Context[commands.Bot], channel: discord.TextChannel) -> None:
+        if not await self._cmd_check_permission(ctx, channel):
+            return
+
+        assert(ctx.guild)
+        if ctx.guild.id not in self.configs:
+            self.configs[ctx.guild.id] = {}
+
+        if channel.id in self.configs[ctx.guild.id]:
+            await interface.reply(ctx, f'{channel.mention} is already a log channel.')
+            return
+
+        self.configs[ctx.guild.id][channel.id] = {}
+        self.save_log_config(ctx.guild.id)
+
+        await interface.reply(ctx, f"Created log channel {channel.mention}. Note that it won't log anything yet until log items are enabled.")
+
+    @log.command()
+    async def delete(self, ctx: commands.Context[commands.Bot], channel: discord.TextChannel) -> None:
+        if not await self._cmd_check_permission(ctx, channel):
+            return
+
+        assert(ctx.guild)
+        if ctx.guild.id not in self.configs:
+            await interface.reply(ctx, 'There are no log channels in this server.')
+            return
+
+        if channel.id not in self.configs[ctx.guild.id]:
+            await interface.reply(ctx, f'{channel.mention} is already not a log channel.')
+            return
+
+        del self.configs[ctx.guild.id][channel.id]
+        if not self.configs[ctx.guild.id]:
+            del self.configs[ctx.guild.id]
+        self.save_log_config(ctx.guild.id)
+
+        await interface.reply(ctx, f'Deleted log channel {channel.mention}.')
+
+    @log.command()
+    async def channels(self, ctx: commands.Context[commands.Bot]) -> None:
+        assert(isinstance(ctx.author, discord.Member))
+        if not ctx.author.guild_permissions.manage_channels:
+            await interface.reply(ctx, 'You are not allowed to manage channels in this server.')
+            return
+
+        assert(ctx.guild)
+        if ctx.guild.id not in self.configs:
+            await interface.reply(ctx, 'There are no log channels in this server.')
+            return
+
+        channel_ids = list(self.configs[ctx.guild.id])
+        mentions = [f'<#{channel_id}>' for channel_id in channel_ids]
+        await interface.reply(ctx, f'Log channels: {', '.join(mentions)}.')
+
+    @create.error
+    async def create_error(self, ctx: commands.Context[commands.Bot], error: commands.CommandError) -> None:
+        # placeholder error messages :P
+        if isinstance(error, commands.MissingRequiredArgument):
+            await interface.reply(ctx, "you didn't specify a channel")
+        else:
+            await interface.reply(ctx, 'some other error')
+
+    async def _cmd_get_channel(self, ctx: commands.Context[commands.Bot], given_channel: Optional[discord.TextChannel]) -> discord.TextChannel | None:
+        assert(ctx.guild)
+        if ctx.guild.id not in self.configs:
+            await interface.reply(ctx, 'There are no log channels in this server. You can create one with `log create`.')
+            return None
+
+        if given_channel is None:
+            if len(self.configs[ctx.guild.id]) == 1:
+                channel_id = list(self.configs[ctx.guild.id])[0]
+                channel = ctx.guild.get_channel(channel_id)
+                if channel is None:
+                    await interface.reply(ctx, f"Somehow, <#{channel_id}> ({channel_id}) doesn't exist.")
+                    return
+            else:
+                channel = ctx.channel
+                if channel.id not in self.configs[ctx.guild.id]:
+                    await interface.reply(ctx, 'This channel is not a log channel. You can create one with `log create`.')
+                    return None
+        else:
+            channel = given_channel
+            if channel.id not in self.configs[ctx.guild.id]:
+                await interface.reply(ctx, 'That channel is not a log channel. You can create one with `log create`.')
+                return None
+
+        if channel.guild != ctx.guild:
+            await interface.reply(ctx, "That channel isn't in this server.")
+            return None
+
+        assert(isinstance(channel, discord.TextChannel))
+        return channel
+
+    async def _cmd_poke_item(self, ctx: commands.Context[commands.Bot], given_channel: Optional[discord.TextChannel], value: bool, *items: str) -> None:
+        assert(ctx.guild)
+        channel = await self._cmd_get_channel(ctx, given_channel)
+        if channel is None:
+            return
+
+        if not await self._cmd_check_permission(ctx, channel):
+            return
+
+        ignored: list[str] = []
+        processed: list[str] = []
+        for item in items:
+            if item not in VALID_LOG_ITEMS:
+                ignored.append(item)
+            else:
+                self.configs[ctx.guild.id][channel.id][item] = value
+                processed.append(item)
+
+        changed = ', '.join(processed)
+        text: list[str] = []
+        if processed:
+            if value:
+                text.append(f'Successfully enabled {changed}.')
+            else:
+                text.append(f'Successfully disabled {changed}.')
+        else:
+            text.append('No items changed.')
+
+        if ignored:
+            text.append(f'Ignored invalid items: {', '.join(ignored)}.')
+
+        self.save_log_config(ctx.guild.id)
+        await interface.reply(ctx, ' '.join(text))
+
+    @log.command()
+    async def enable(self, ctx: commands.Context[commands.Bot], given_channel: Optional[discord.TextChannel], *items: str) -> None:
+        await self._cmd_poke_item(ctx, given_channel, True, *items)
+
+    @log.command()
+    async def disable(self, ctx: commands.Context[commands.Bot], given_channel: Optional[discord.TextChannel], *items: str) -> None:
+        await self._cmd_poke_item(ctx, given_channel, False, *items)
+
+    @log.command()
+    async def get(self, ctx: commands.Context[commands.Bot], given_channel: Optional[discord.TextChannel]) -> None:
+        assert(ctx.guild)
+        channel = await self._cmd_get_channel(ctx, given_channel)
+        if channel is None:
+            return
+
+        if not await self._cmd_check_permission(ctx, channel):
+            return
+
+        items = [key for key, value in self.configs[ctx.guild.id][channel.id].items() if value]
+        if not items:
+            items.append('None')
+
+        await interface.reply(ctx, f'Enabled logs for {channel.mention}: {', '.join(items)}.')
 
 
 def id_tags(
