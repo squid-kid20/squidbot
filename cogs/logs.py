@@ -14,6 +14,7 @@ VALID_LOG_ITEMS = (
     'message_delete',
     'message_edit',
     'member_join',
+    'member_remove',
 )
 
 class Logs(commands.Cog):
@@ -522,6 +523,58 @@ class Logs(commands.Cog):
         await log_channel.send(
             f'**{header}**\n'
             f'{member.mention}',
+            embed=embed,
+        )
+
+    @commands.Cog.listener()
+    async def on_raw_member_remove(self, payload: discord.RawMemberRemoveEvent) -> None:
+        if payload.guild_id not in self.configs:
+            return
+
+        guild_config = self.configs[payload.guild_id]
+
+        for log_channel_id, log_channel_config in guild_config.items():
+            if not log_channel_config.get('member_remove', False):
+                continue
+            log_channel = self.bot.get_channel(log_channel_id)
+            if not isinstance(log_channel, discord.TextChannel):
+                continue
+            if log_channel.guild.id != payload.guild_id:
+                continue
+
+            await self._log_member_remove(log_channel, payload.user)
+
+    async def _log_member_remove(self, log_channel: discord.TextChannel, user: discord.User | discord.Member, /):
+        embed = discord.Embed(
+            colour=id_colour(user.id),
+        ).set_author(
+            name=user.display_name,
+            icon_url=user.display_avatar.url,
+        ).set_thumbnail(
+            url=user.display_avatar.url,
+        )
+
+        if isinstance(user, discord.Member) and user.joined_at is not None:
+            embed.add_field(
+                name='Originally joined server',
+                value=relative_time(user.joined_at),
+            )
+
+        embed.add_field(
+            name='Server now has',
+            value=f'{log_channel.guild.member_count} members',
+        ).set_footer(
+            text=id_tags(user_id=user.id),
+        )
+
+        if user.bot:
+            header = '\N{ROBOT FACE}\N{DOOR} BOT REMOVED FROM SERVER'
+        else:
+            header = '\N{DOOR} MEMBER REMOVED'
+
+        await log_channel.send(
+            f'**{header}**\n'
+            f'{user.mention}',
             embed=embed,
         )
 
