@@ -42,49 +42,53 @@ class Logs(commands.Cog):
             if log_channel.guild != message.guild:
                 continue
 
-            embed = discord.Embed(
-                colour=get_colour(message.author),
-                description=message.content,
-            ).set_author(
-                name=message.author.display_name,
-                icon_url=message.author.display_avatar.url,
-            ).set_footer(
-                text=id_tags(
-                    user_id=message.author.id,
-                    message_id=message.id,
-                    channel_id=message.channel.id,
-                ),
+            await self._log_cached_message_delete(log_channel, message)
+
+    async def _log_cached_message_delete(self, log_channel: discord.TextChannel, message: discord.Message, /) -> None:
+        embed = discord.Embed(
+            colour=get_colour(message.author),
+            description=message.content,
+        ).set_author(
+            name=message.author.display_name,
+            icon_url=message.author.display_avatar.url,
+        ).set_footer(
+            text=id_tags(
+                user_id=message.author.id,
+                message_id=message.id,
+                channel_id=message.channel.id,
+            ),
+        )
+        reltime = relative_time(message.created_at)
+
+        await log_channel.send(
+            '**\N{WASTEBASKET} MESSAGE DELETED**\n'
+            f'Sent {reltime} by {message.author.mention} in <#{message.channel.id}>',
+            embed=embed,
+        )
+
+        if message.attachments:
+            ids = [attachment.id for attachment in message.attachments]
+            assert(message.guild)
+            history: History = self.bot.get_cog('History') # type: ignore
+            assert(history)
+
+            descriptions = {attachment.id: attachment.description for attachment in message.attachments if attachment.description}
+
+            files = history.get_downloaded_attachments(
+                message.guild.id, message.channel.id, message.id,
+                attachment_ids=ids,
+                descriptions=descriptions,
             )
-            reltime = relative_time(message.created_at)
 
-            await log_channel.send(
-                '**\N{WASTEBASKET} MESSAGE DELETED**\n'
-                f'Sent {reltime} by {message.author.mention} in {message.channel.mention}',
-                embed=embed,
-            )
-
-            if message.attachments:
-                ids = [attachment.id for attachment in message.attachments]
-                history: History = self.bot.get_cog('History') # type: ignore
-                assert(history)
-
-                descriptions = {attachment.id: attachment.description for attachment in message.attachments if attachment.description}
-
-                files = history.get_downloaded_attachments(
-                    message.guild.id, message.channel.id, message.id,
-                    attachment_ids=ids,
-                    descriptions=descriptions,
+            if files:
+                await log_channel.send(
+                    f'\N{PAPERCLIP} _Attachments of message {message.id}:_',
+                    files=files,
                 )
-
-                if files:
-                    await log_channel.send(
-                        f'\N{PAPERCLIP} _Attachments of message {message.id}:_',
-                        files=files,
-                    )
-                else:
-                    await log_channel.send(
-                        f'\N{PAPERCLIP} _Attachments of message {message.id} could not be found._',
-                    )
+            else:
+                await log_channel.send(
+                    f'\N{PAPERCLIP} _Attachments of message {message.id} could not be found._',
+                )
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent) -> None:
@@ -232,81 +236,91 @@ class Logs(commands.Cog):
             if log_channel.guild != before.guild:
                 continue
 
-            if before.content != after.content:
-                embed = discord.Embed(
-                    colour=get_colour(before.author),
-                )
+            await self._dispatch_message_edit(log_channel, before, after)
 
-                if len(before.content) <= 1024 and len(after.content) <= 1024:
-                    embed.add_field(
-                        name='Before (empty)' if not before.content else 'Before',
-                        value=before.content or '_No content_',
-                        inline=False,
-                    ).add_field(
-                        name='After (empty)' if not after.content else 'After',
-                        value=after.content or '_No content_',
-                        inline=False,
-                    )
-                else:
-                    embed.title = 'Before (empty)' if not before.content else 'Before'
-                    embed.description = before.content
+    async def _dispatch_message_edit(self, log_channel: discord.TextChannel, before: discord.Message, after: discord.Message, /) -> None:
+        if before.content != after.content:
+            await self._log_cached_message_edit(log_channel, before, after)
 
-                embed.set_author(
-                    name=before.author.display_name,
-                    icon_url=before.author.display_avatar.url,
-                ).set_footer(
-                    text=id_tags(
-                        user_id=before.author.id,
-                        message_id=before.id,
-                        channel_id=before.channel.id,
-                    ),
-                )
+        removed_attachment_ids = [attachment.id for attachment in before.attachments if attachment not in after.attachments]
+        if removed_attachment_ids:
+            await self._log_cached_removed_attachments(log_channel, before, removed_attachment_ids)
 
-                reltime = relative_time(before.created_at)
-                await log_channel.send(
-                    '**\N{MEMO} MESSAGE EDITED**\n'
-                    f'Sent {reltime} by {before.author.mention} at {before.jump_url}',
-                    embed=embed,
-                )
+    async def _log_cached_message_edit(self, log_channel: discord.TextChannel, before: discord.Message, after: discord.Message, /) -> None:
+        embed = discord.Embed(
+            colour=get_colour(before.author),
+        )
 
-            removed_attachment_ids = [attachment.id for attachment in before.attachments if attachment not in after.attachments]
-            if removed_attachment_ids:
-                history: History = self.bot.get_cog('History') # type: ignore
-                assert(history)
+        if len(before.content) <= 1024 and len(after.content) <= 1024:
+            embed.add_field(
+                name='Before (empty)' if not before.content else 'Before',
+                value=before.content or '_No content_',
+                inline=False,
+            ).add_field(
+                name='After (empty)' if not after.content else 'After',
+                value=after.content or '_No content_',
+                inline=False,
+            )
+        else:
+            embed.title = 'Before (empty)' if not before.content else 'Before'
+            embed.description = before.content
 
-                descriptions = {attachment.id: attachment.description for attachment in before.attachments if attachment.description}
+        embed.set_author(
+            name=before.author.display_name,
+            icon_url=before.author.display_avatar.url,
+        ).set_footer(
+            text=id_tags(
+                user_id=before.author.id,
+                message_id=before.id,
+                channel_id=before.channel.id,
+            ),
+        )
 
-                files = history.get_downloaded_attachments(
-                    before.guild.id, before.channel.id, before.id,
-                    attachment_ids=removed_attachment_ids,
-                    descriptions=descriptions,
-                )
+        reltime = relative_time(before.created_at)
+        await log_channel.send(
+            '**\N{MEMO} MESSAGE EDITED**\n'
+            f'Sent {reltime} by {before.author.mention} at {before.jump_url}',
+            embed=embed,
+        )
 
-                embed = discord.Embed(
-                    description=before.content,
-                    colour=get_colour(before.author),
-                ).set_author(
-                    name=before.author.display_name,
-                    icon_url=before.author.display_avatar.url,
-                ).set_footer(
-                    text=id_tags(
-                        user_id=before.author.id,
-                        message_id=before.id,
-                        channel_id=before.channel.id,
-                    ),
-                )
+    async def _log_cached_removed_attachments(self, log_channel: discord.TextChannel, before: discord.Message, removed_attachment_ids: list[int], /) -> None:
+        assert(before.guild)
+        history: History = self.bot.get_cog('History') # type: ignore
+        assert(history)
 
-                reltime = relative_time(before.created_at)
-                text = [
-                    '**\N{MEMO} MESSAGE ATTACHMENTS REMOVED**',
-                    f'Sent {reltime} by {before.author.mention} at {before.jump_url}',
-                ]
-                if files:
-                    text.append(f'\N{PAPERCLIP} _Removed attachments are attached._')
-                    await log_channel.send('\n'.join(text), embed=embed, files=files)
-                else:
-                    text.append(f'\N{PAPERCLIP} _Removed attachments could not be found._')
-                    await log_channel.send('\n'.join(text), embed=embed)
+        descriptions = {attachment.id: attachment.description for attachment in before.attachments if attachment.description}
+
+        files = history.get_downloaded_attachments(
+            before.guild.id, before.channel.id, before.id,
+            attachment_ids=removed_attachment_ids,
+            descriptions=descriptions,
+        )
+
+        embed = discord.Embed(
+            description=before.content,
+            colour=get_colour(before.author),
+        ).set_author(
+            name=before.author.display_name,
+            icon_url=before.author.display_avatar.url,
+        ).set_footer(
+            text=id_tags(
+                user_id=before.author.id,
+                message_id=before.id,
+                channel_id=before.channel.id,
+            ),
+        )
+
+        reltime = relative_time(before.created_at)
+        text = [
+            '**\N{MEMO} MESSAGE ATTACHMENTS REMOVED**',
+            f'Sent {reltime} by {before.author.mention} at {before.jump_url}',
+        ]
+        if files:
+            text.append(f'\N{PAPERCLIP} _Removed attachments are attached._')
+            await log_channel.send('\n'.join(text), embed=embed, files=files)
+        else:
+            text.append(f'\N{PAPERCLIP} _Removed attachments could not be found._')
+            await log_channel.send('\n'.join(text), embed=embed)
 
     @commands.Cog.listener()
     async def on_raw_message_edit(self, payload: discord.RawMessageUpdateEvent) -> None:
@@ -342,7 +356,7 @@ class Logs(commands.Cog):
             if data is None:
                 await self._log_uncached_message_edit(log_channel, payload)
             else:
-                await self._log_historical_message_edit(log_channel, payload, data)
+                await self._dispatch_historical_message_edit(log_channel, payload, data)
 
     async def _log_uncached_message_edit(self, log_channel: discord.TextChannel, payload: discord.RawMessageUpdateEvent, /) -> None:
         embed = discord.Embed(
@@ -378,85 +392,91 @@ class Logs(commands.Cog):
                 files=files,
             )
 
-    async def _log_historical_message_edit(self, log_channel: discord.TextChannel, payload: discord.RawMessageUpdateEvent, data: dict[str, Any], /) -> None:
+    async def _dispatch_historical_message_edit(self, log_channel: discord.TextChannel, payload: discord.RawMessageUpdateEvent, data: dict[str, Any], /) -> None:
         before_content: str = data['content']
 
         if before_content != payload.message.content:
-            embed = discord.Embed(
-                colour=get_colour(payload.message.author),
-            )
-
-            if len(before_content) <= 1024 and len(payload.message.content) <= 1024:
-                embed.add_field(
-                    name='Before (empty)' if not before_content else 'Before',
-                    value=before_content or '_No content_',
-                    inline=False,
-                ).add_field(
-                    name='After (empty)' if not payload.message.content else 'After',
-                    value=payload.message.content or '_No content_',
-                    inline=False,
-                )
-            else:
-                embed.title = 'Before (empty)' if not before_content else 'Before'
-                embed.description = before_content
-
-            embed.set_author(
-                name=payload.message.author.display_name,
-                icon_url=payload.message.author.display_avatar.url,
-            ).set_footer(
-                text=id_tags(
-                    user_id=payload.message.author.id,
-                    message_id=payload.message.id,
-                    channel_id=payload.message.channel.id,
-                ),
-            )
-
-            reltime = relative_time(payload.message.created_at)
-            await log_channel.send(
-                '**\N{MEMO} MESSAGE EDITED**\n'
-                f'Sent {reltime} by {payload.message.author.mention} at {payload.message.jump_url}',
-                embed=embed,
-            )
+            await self._log_historical_message_edit(log_channel, payload, before_content)
 
         before_attachments: list[dict[str, Any]] = data['attachments']
         removed_attachment_ids = [int(attachment['id']) for attachment in before_attachments if attachment not in payload.message.attachments]
         if removed_attachment_ids:
-            history: History = self.bot.get_cog('History') # type: ignore
-            assert(history)
+            await self._log_historical_removed_attachments(log_channel, payload, before_content, before_attachments, removed_attachment_ids)
 
-            descriptions: dict[int, str] = {int(attachment['id']): attachment['description'] for attachment in before_attachments if 'description' in attachment}
+    async def _log_historical_message_edit(self, log_channel: discord.TextChannel, payload: discord.RawMessageUpdateEvent, before_content: str, /) -> None:
+        embed = discord.Embed(
+            colour=get_colour(payload.message.author),
+        )
 
-            files = history.get_downloaded_attachments(
-                payload.guild_id or 0, payload.channel_id, payload.message_id,
-                attachment_ids=removed_attachment_ids,
-                descriptions=descriptions,
+        if len(before_content) <= 1024 and len(payload.message.content) <= 1024:
+            embed.add_field(
+                name='Before (empty)' if not before_content else 'Before',
+                value=before_content or '_No content_',
+                inline=False,
+            ).add_field(
+                name='After (empty)' if not payload.message.content else 'After',
+                value=payload.message.content or '_No content_',
+                inline=False,
             )
+        else:
+            embed.title = 'Before (empty)' if not before_content else 'Before'
+            embed.description = before_content
 
-            embed = discord.Embed(
-                description=before_content,
-                colour=get_colour(payload.message.author),
-            ).set_author(
-                name=payload.message.author.display_name,
-                icon_url=payload.message.author.display_avatar.url,
-            ).set_footer(
-                text=id_tags(
-                    user_id=payload.message.author.id,
-                    message_id=payload.message.id,
-                    channel_id=payload.message.channel.id,
-                ),
-            )
+        embed.set_author(
+            name=payload.message.author.display_name,
+            icon_url=payload.message.author.display_avatar.url,
+        ).set_footer(
+            text=id_tags(
+                user_id=payload.message.author.id,
+                message_id=payload.message.id,
+                channel_id=payload.message.channel.id,
+            ),
+        )
 
-            reltime = relative_time(payload.message.created_at)
-            text = [
-                '**\N{MEMO} MESSAGE ATTACHMENTS REMOVED**',
-                f'Sent {reltime} by {payload.message.author.mention} at {payload.message.jump_url}',
-            ]
-            if files:
-                text.append(f'\N{PAPERCLIP} _Removed attachments are attached._')
-                await log_channel.send('\n'.join(text), embed=embed, files=files)
-            else:
-                text.append(f'\N{PAPERCLIP} _Removed attachments could not be found._')
-                await log_channel.send('\n'.join(text), embed=embed)
+        reltime = relative_time(payload.message.created_at)
+        await log_channel.send(
+            '**\N{MEMO} MESSAGE EDITED**\n'
+            f'Sent {reltime} by {payload.message.author.mention} at {payload.message.jump_url}',
+            embed=embed,
+        )
+
+    async def _log_historical_removed_attachments(self, log_channel: discord.TextChannel, payload: discord.RawMessageUpdateEvent, before_content: str, before_attachments: list[dict[str, Any]], removed_attachment_ids: list[int], /) -> None:
+        history: History = self.bot.get_cog('History') # type: ignore
+        assert(history)
+
+        descriptions: dict[int, str] = {int(attachment['id']): attachment['description'] for attachment in before_attachments if 'description' in attachment}
+
+        files = history.get_downloaded_attachments(
+            payload.guild_id or 0, payload.channel_id, payload.message_id,
+            attachment_ids=removed_attachment_ids,
+            descriptions=descriptions,
+        )
+
+        embed = discord.Embed(
+            description=before_content,
+            colour=get_colour(payload.message.author),
+        ).set_author(
+            name=payload.message.author.display_name,
+            icon_url=payload.message.author.display_avatar.url,
+        ).set_footer(
+            text=id_tags(
+                user_id=payload.message.author.id,
+                message_id=payload.message.id,
+                channel_id=payload.message.channel.id,
+            ),
+        )
+
+        reltime = relative_time(payload.message.created_at)
+        text = [
+            '**\N{MEMO} MESSAGE ATTACHMENTS REMOVED**',
+            f'Sent {reltime} by {payload.message.author.mention} at {payload.message.jump_url}',
+        ]
+        if files:
+            text.append(f'\N{PAPERCLIP} _Removed attachments are attached._')
+            await log_channel.send('\n'.join(text), embed=embed, files=files)
+        else:
+            text.append(f'\N{PAPERCLIP} _Removed attachments could not be found._')
+            await log_channel.send('\n'.join(text), embed=embed)
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -474,33 +494,36 @@ class Logs(commands.Cog):
             if log_channel.guild != member.guild:
                 continue
 
-            embed = discord.Embed(
-                colour=id_colour(member.id),
-            ).set_author(
-                name=member.display_name,
-                icon_url=member.display_avatar.url,
-            ).set_thumbnail(
-                url=member.display_avatar.url,
-            ).add_field(
-                name='Account created',
-                value=relative_time(member.created_at),
-            ).add_field(
-                name='Server now has',
-                value=f'{member.guild.member_count} members',
-            ).set_footer(
-                text=id_tags(user_id=member.id),
-            )
+            await self._log_member_join(log_channel, member)
 
-            if member.bot:
-                header = '\N{ROBOT FACE} BOT ADDED TO SERVER'
-            else:
-                header = '\N{WAVING HAND SIGN} MEMBER JOINED'
+    async def _log_member_join(self, log_channel: discord.TextChannel, member: discord.Member, /):
+        embed = discord.Embed(
+            colour=id_colour(member.id),
+        ).set_author(
+            name=member.display_name,
+            icon_url=member.display_avatar.url,
+        ).set_thumbnail(
+            url=member.display_avatar.url,
+        ).add_field(
+            name='Account created',
+            value=relative_time(member.created_at),
+        ).add_field(
+            name='Server now has',
+            value=f'{member.guild.member_count} members',
+        ).set_footer(
+            text=id_tags(user_id=member.id),
+        )
 
-            await log_channel.send(
-                f'**{header}**\n'
-                f'{member.mention}',
-                embed=embed,
-            )
+        if member.bot:
+            header = '\N{ROBOT FACE} BOT ADDED TO SERVER'
+        else:
+            header = '\N{WAVING HAND SIGN} MEMBER JOINED'
+
+        await log_channel.send(
+            f'**{header}**\n'
+            f'{member.mention}',
+            embed=embed,
+        )
 
     def load_log_configs(self):
         """Load log configurations for each guild."""
