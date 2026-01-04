@@ -537,7 +537,7 @@ class Logs(commands.Cog):
                 guild_id = int(filename[:-5])
                 self.configs[guild_id] = config
 
-    def save_log_config(self, guild_id: int):
+    def save_log_config(self, guild_id: int, /):
         """Save log configurations for a guild."""
         config = self.configs[guild_id]
         json_data = {str(key): value for key, value in config.items()}
